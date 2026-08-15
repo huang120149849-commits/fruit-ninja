@@ -236,8 +236,7 @@ io.on("connection", (socket) => {
     const username = data && tokens.get(data.token);
     const room = findRoomBySocket(socket.id);
     if (!username || !room) return ack && ack({ ok: false, error: "未登录或不在房间" });
-    if (room.ownerId !== socket.id) return ack && ack({ ok: false, error: "只有房主可以开始比赛" });
-    if (room.status !== "waiting") return ack && ack({ ok: false });
+    if (room.status !== "waiting") return ack && ack({ ok: false, error: "比赛已开始或房间状态异常" });
     const startsAt = Date.now() + COUNTDOWN;
     const endsAt = startsAt + MATCH_DURATION;
     room.status = "playing";

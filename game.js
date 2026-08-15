@@ -185,14 +185,14 @@ function renderRoom() {
     li.textContent = (p.username === roomInfo.owner ? "👑 " : "👤 ") + p.username;
     el.roomPlayers.appendChild(li);
   });
-  const isOwner = roomInfo.owner === currentUser.username;
-  el.startMatchBtn.classList.toggle("hidden", !isOwner);
+  el.startMatchBtn.classList.toggle("hidden", roomInfo.status !== "waiting");
   el.startMatchBtn.disabled = roomInfo.status !== "waiting";
+  el.startMatchBtn.textContent = roomInfo.players.length === 1 ? "🚀 开始比赛 (单人练习, 60秒)" : "🚀 开始比赛 (60秒)";
 }
 
 el.startMatchBtn.addEventListener("click", () => {
   socket.emit("startMatch", { token: currentUser.token }, (res) => {
-    if (res && !res.ok) alert(res.error);
+    if (res && !res.ok) alert(res.error || "无法开始比赛");
   });
 });
 
