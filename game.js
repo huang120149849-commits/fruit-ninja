@@ -191,8 +191,12 @@ function renderRoom() {
 }
 
 el.startMatchBtn.addEventListener("click", () => {
+  el.startMatchBtn.disabled = true;
   socket.emit("startMatch", { token: currentUser.token }, (res) => {
-    if (res && !res.ok) alert(res.error || "无法开始比赛");
+    if (res && !res.ok) {
+      alert(res.error || "无法开始比赛");
+      el.startMatchBtn.disabled = false;
+    }
   });
 });
 

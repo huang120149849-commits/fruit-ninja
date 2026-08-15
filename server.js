@@ -69,11 +69,15 @@ function roomSnapshot(room) {
   };
 }
 
+function emitToPlayers(room, event, payload) {
+  for (const socketId of room.players.keys()) {
+    io.to(socketId).emit(event, payload);
+  }
+}
+
 function broadcastRoom(room) {
   const snap = roomSnapshot(room);
-  for (const p of room.players.values()) {
-    io.to(p.socketId).emit("roomUpdate", snap);
-  }
+  emitToPlayers(room, "roomUpdate", snap);
 }
 
 function clearMatchTimer(room) {
@@ -102,9 +106,9 @@ function endMatch(room) {
   }
   if (changed) saveUsers(users);
   for (const p of room.players.values()) {
-    io.to(p.socketId).emit("matchEnd", { ranking });
     p.score = 0;
   }
+  emitToPlayers(room, "matchEnd", { ranking });
   broadcastRoom(room);
 }
 
@@ -129,9 +133,7 @@ function scheduleLiveScores(room) {
     const scores = [...room.players.values()]
       .map((x) => ({ username: x.username, score: x.score }))
       .sort((a, b) => b.score - a.score);
-    for (const pl of room.players.values()) {
-      io.to(pl.socketId).emit("liveScores", { scores });
-    }
+    emitToPlayers(room, "liveScores", { scores });
   }, delay);
 }
 
@@ -236,15 +238,14 @@ io.on("connection", (socket) => {
     const username = data && tokens.get(data.token);
     const room = findRoomBySocket(socket.id);
     if (!username || !room) return ack && ack({ ok: false, error: "未登录或不在房间" });
-    if (room.status !== "waiting") return ack && ack({ ok: false, error: "比赛已开始或房间状态异常" });
+    if (room.status === "playing") return ack && ack({ ok: true });
+    if (room.status !== "waiting") return ack && ack({ ok: false, error: "房间状态异常，请退出房间重新加入" });
     const startsAt = Date.now() + COUNTDOWN;
     const endsAt = startsAt + MATCH_DURATION;
     room.status = "playing";
     clearLiveScoresTimer(room);
     for (const p of room.players.values()) p.score = 0;
-    for (const p of room.players.values()) {
-      io.to(p.socketId).emit("matchStart", { startsAt, endsAt });
-    }
+    emitToPlayers(room, "matchStart", { startsAt, endsAt });
     clearMatchTimer(room);
     room.matchTimer = setTimeout(() => endMatch(room), endsAt - Date.now() + 500);
     broadcastRoom(room);
