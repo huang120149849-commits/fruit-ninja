@@ -259,12 +259,67 @@ socket.on("matchEnd", ({ ranking }) => {
   showScreen("result");
 });
 
+let reconnecting = false;
+
 socket.on("disconnect", () => {
-  if (currentUser) {
-    alert("与服务器断开连接，请刷新页面");
-    location.reload();
-  }
+  if (!currentUser) return;
+  reconnecting = true;
+  showToast("连接已断开，正在重连...");
 });
+
+socket.on("connect", () => {
+  if (!reconnecting) return;
+  reconnecting = false;
+  const token = localStorage.getItem("fn-token");
+  socket.emit("loginWithToken", { token }, (res) => {
+    if (!res || !res.ok) {
+      currentUser = null;
+      roomInfo = null;
+      localStorage.removeItem("fn-token");
+      localStorage.removeItem("fn-username");
+      hideToast();
+      setAuthMode("login");
+      showScreen("auth");
+      el.authMsg.textContent = "服务器已重启，请重新登录";
+      return;
+    }
+    completeAuth(res);
+    if (roomInfo && roomInfo.code) {
+      socket.emit("joinRoom", { token: res.token, code: roomInfo.code }, (jr) => {
+        if (jr && jr.ok) {
+          roomInfo = jr.room;
+          hideToast();
+          if (screens.room.classList.contains("active")) renderRoom();
+          else showScreen("room");
+        } else {
+          roomInfo = null;
+          hideToast();
+          el.lobbyMsg.textContent = "已重新连接（原房间已失效）";
+          showScreen("lobby");
+        }
+      });
+    } else {
+      hideToast();
+      showScreen("lobby");
+    }
+  });
+});
+
+function showToast(msg) {
+  let t = document.getElementById("toast");
+  if (!t) {
+    t = document.createElement("div");
+    t.id = "toast";
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.classList.remove("hidden");
+}
+
+function hideToast() {
+  const t = document.getElementById("toast");
+  if (t) t.classList.add("hidden");
+}
 
 function renderLiveScores() {
   const medals = ["🥇", "🥈", "🥉"];
