@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fruit Ninja 联机版</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <div id="auth-screen" class="screen active">
+      <div class="panel auth-panel">
+        <h1 class="title">🍉 水果忍者</h1>
+        <p class="subtitle">多人联机对战版</p>
+        <div class="tabs">
+          <button id="tab-login" class="tab active">登录</button>
+          <button id="tab-register" class="tab">注册</button>
+        </div>
+        <form id="auth-form" autocomplete="off">
+          <input id="auth-username" maxlength="16" placeholder="用户名 (2-16字符)" required>
+          <input id="auth-password" type="password" placeholder="密码 (至少4位)" required>
+          <input id="auth-password2" type="password" placeholder="确认密码" class="hidden">
+          <p id="auth-msg" class="msg"></p>
+          <button type="submit" id="auth-submit">登 录</button>
+        </form>
+        <button id="auth-music-btn" class="icon-btn">🎵 音乐: 开</button>
+      </div>
+    </div>
+
+    <div id="lobby-screen" class="screen">
+      <header class="lobby-header">
+        <div class="user-info">👤 <span id="lobby-username"></span> &nbsp;|&nbsp; 🏆 最佳: <span id="lobby-best">0</span></div>
+        <div class="header-btns">
+          <button id="music-toggle" class="icon-btn">🎵 音乐: 开</button>
+          <button id="sfx-toggle" class="icon-btn">🔊 音效: 开</button>
+          <button id="logout-btn" class="icon-btn">退出登录</button>
+        </div>
+      </header>
+      <main class="lobby-main">
+        <div class="panel lobby-left">
+          <h2>🎮 多人对战</h2>
+          <button id="create-room-btn" class="big-btn">➕ 创建房间</button>
+          <div class="join-row">
+            <input id="room-code-input" placeholder="输入房间号" maxlength="6">
+            <button id="join-room-btn" class="big-btn">加入房间</button>
+          </div>
+          <p id="lobby-msg" class="msg"></p>
+        </div>
+        <div class="panel lobby-right">
+          <h2>🏆 排行榜 TOP 10</h2>
+          <table id="leaderboard-table">
+            <thead>
+              <tr><th>#</th><th>玩家</th><th>最佳成绩</th></tr>
+            </thead>
+            <tbody id="leaderboard-body"></tbody>
+          </table>
+        </div>
+      </main>
+    </div>
+
+    <div id="room-screen" class="screen">
+      <div class="panel room-panel">
+        <h2>房间号: <span id="room-code-label"></span></h2>
+        <p id="room-status"></p>
+        <ul id="room-players"></ul>
+        <div class="room-btns">
+          <button id="start-match-btn" class="big-btn hidden">🚀 开始比赛 (60秒)</button>
+          <button id="leave-room-btn" class="big-btn ghost">离开房间</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="game-screen" class="screen">
+      <div id="game-wrap">
+        <div id="game-container">
+          <canvas id="game-canvas"></canvas>
+          <div id="countdown-el" class="hidden"></div>
+          <div id="game-hud">
+            <span id="game-timer">60s</span>
+            <span id="game-score">得分: 0</span>
+          </div>
+        </div>
+        <aside id="sidebar">
+          <h3>📊 实时排名</h3>
+          <ul id="live-ranks"></ul>
+        </aside>
+      </div>
+    </div>
+
+    <div id="result-screen" class="screen">
+      <div class="panel result-panel">
+        <h2>🏁 比赛结束</h2>
+        <ul id="result-ranking"></ul>
+        <div class="room-btns">
+          <button id="back-to-room-btn" class="big-btn">返回房间</button>
+          <button id="back-to-lobby-btn" class="big-btn ghost">返回大厅</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="audio.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>

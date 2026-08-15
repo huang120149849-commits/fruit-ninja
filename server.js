@@ -1,0 +1,288 @@
+const express = require("express");
+const http = require("http");
+const path = require("path");
+const fs = require("fs");
+const crypto = require("crypto");
+const { Server } = require("socket.io");
+
+const PORT = process.env.PORT || 3000;
+const MATCH_DURATION = 60000;
+const COUNTDOWN = 3000;
+const MAX_PLAYERS = 100;
+
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: "*" } });
+
+app.use(express.static(path.join(__dirname)));
+
+const DATA_DIR = path.join(__dirname, "data");
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+const USERS_FILE = path.join(DATA_DIR, "users.json");
+
+function loadUsers() {
+  try {
+    return JSON.parse(fs.readFileSync(USERS_FILE, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function saveUsers(users) {
+  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+}
+
+function hashPassword(password, salt) {
+  return crypto.scryptSync(String(password), salt, 64).toString("hex");
+}
+
+const tokens = new Map();
+const rooms = new Map();
+
+function makeToken() {
+  return crypto.randomBytes(24).toString("hex");
+}
+
+function makeRoomCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code;
+  do {
+    code = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+  } while (rooms.has(code));
+  return code;
+}
+
+function findRoomBySocket(socketId) {
+  for (const room of rooms.values()) {
+    if (room.players.has(socketId)) return room;
+  }
+  return null;
+}
+
+function roomSnapshot(room) {
+  return {
+    code: room.code,
+    status: room.status,
+    owner: room.players.has(room.ownerId) ? room.players.get(room.ownerId).username : null,
+    players: [...room.players.values()].map((p) => ({ username: p.username, score: p.score })),
+    maxPlayers: MAX_PLAYERS,
+  };
+}
+
+function broadcastRoom(room) {
+  const snap = roomSnapshot(room);
+  for (const p of room.players.values()) {
+    io.to(p.socketId).emit("roomUpdate", snap);
+  }
+}
+
+function clearMatchTimer(room) {
+  if (room.matchTimer) {
+    clearTimeout(room.matchTimer);
+    room.matchTimer = null;
+  }
+}
+
+function endMatch(room) {
+  clearMatchTimer(room);
+  clearLiveScoresTimer(room);
+  if (!rooms.has(room.code)) return;
+  room.status = "waiting";
+  const ranking = [...room.players.values()]
+    .map((p) => ({ username: p.username, score: p.score }))
+    .sort((a, b) => b.score - a.score);
+  const users = loadUsers();
+  let changed = false;
+  for (const r of ranking) {
+    const u = users[r.username];
+    if (u && r.score > (u.bestScore || 0)) {
+      u.bestScore = r.score;
+      changed = true;
+    }
+  }
+  if (changed) saveUsers(users);
+  for (const p of room.players.values()) {
+    io.to(p.socketId).emit("matchEnd", { ranking });
+    p.score = 0;
+  }
+  broadcastRoom(room);
+}
+
+function clearLiveScoresTimer(room) {
+  if (room.liveScoresTimer) {
+    clearTimeout(room.liveScoresTimer);
+    room.liveScoresTimer = null;
+  }
+  room.liveScoresPending = false;
+}
+
+function scheduleLiveScores(room) {
+  if (room.liveScoresPending) return;
+  const elapsed = Date.now() - (room.lastLiveScoresAt || 0);
+  const delay = Math.max(0, 500 - elapsed);
+  room.liveScoresPending = true;
+  room.liveScoresTimer = setTimeout(() => {
+    room.liveScoresPending = false;
+    room.liveScoresTimer = null;
+    room.lastLiveScoresAt = Date.now();
+    if (!rooms.has(room.code)) return;
+    const scores = [...room.players.values()]
+      .map((x) => ({ username: x.username, score: x.score }))
+      .sort((a, b) => b.score - a.score);
+    for (const pl of room.players.values()) {
+      io.to(pl.socketId).emit("liveScores", { scores });
+    }
+  }, delay);
+}
+
+function removeFromRoom(socketId) {
+  const room = findRoomBySocket(socketId);
+  if (!room) return;
+  room.players.delete(socketId);
+  if (room.players.size === 0) {
+    clearMatchTimer(room);
+    clearLiveScoresTimer(room);
+    rooms.delete(room.code);
+    return;
+  }
+  if (room.ownerId === socketId) {
+    room.ownerId = room.players.keys().next().value;
+  }
+  broadcastRoom(room);
+}
+
+io.on("connection", (socket) => {
+  socket.on("register", ({ username, password }, ack) => {
+    username = String(username || "").trim();
+    password = String(password || "");
+    if (username.length < 2 || username.length > 16) {
+      return ack({ ok: false, error: "用户名需 2-16 个字符" });
+    }
+    if (password.length < 4) {
+      return ack({ ok: false, error: "密码至少 4 位" });
+    }
+    const users = loadUsers();
+    if (users[username]) {
+      return ack({ ok: false, error: "用户名已存在" });
+    }
+    const salt = crypto.randomBytes(16).toString("hex");
+    users[username] = {
+      salt,
+      hash: hashPassword(password, salt),
+      bestScore: 0,
+      createdAt: Date.now(),
+    };
+    saveUsers(users);
+    const token = makeToken();
+    tokens.set(token, username);
+    ack({ ok: true, token, username, bestScore: 0 });
+  });
+
+  socket.on("login", ({ username, password }, ack) => {
+    username = String(username || "").trim();
+    password = String(password || "");
+    const users = loadUsers();
+    const u = users[username];
+    if (!u || hashPassword(password, u.salt) !== u.hash) {
+      return ack({ ok: false, error: "用户名或密码错误" });
+    }
+    const token = makeToken();
+    tokens.set(token, username);
+    ack({ ok: true, token, username, bestScore: u.bestScore || 0 });
+  });
+
+  socket.on("loginWithToken", ({ token }, ack) => {
+    const username = tokens.get(token);
+    if (!username) return ack({ ok: false });
+    const users = loadUsers();
+    const u = users[username];
+    if (!u) return ack({ ok: false });
+    ack({ ok: true, token, username, bestScore: u.bestScore || 0 });
+  });
+
+  socket.on("createRoom", (data, ack) => {
+    const username = data && tokens.get(data.token);
+    if (!username) return ack({ ok: false, error: "未登录" });
+    removeFromRoom(socket.id);
+    const code = makeRoomCode();
+    const room = {
+      code,
+      status: "waiting",
+      ownerId: socket.id,
+      players: new Map([[socket.id, { username, score: 0 }]]),
+      matchTimer: null,
+    };
+    rooms.set(code, room);
+    ack({ ok: true, room: roomSnapshot(room) });
+  });
+
+  socket.on("joinRoom", (data, ack) => {
+    const username = data && tokens.get(data.token);
+    if (!username) return ack({ ok: false, error: "未登录" });
+    const code = String(data.code || "").trim().toUpperCase();
+    const room = rooms.get(code);
+    if (!room) return ack({ ok: false, error: "房间不存在" });
+    if (room.status !== "waiting") return ack({ ok: false, error: "比赛进行中，请稍后再试" });
+    if (room.players.size >= MAX_PLAYERS) {
+      return ack({ ok: false, error: `房间已满 (最多 ${MAX_PLAYERS} 人)` });
+    }
+    removeFromRoom(socket.id);
+    room.players.set(socket.id, { username, score: 0 });
+    broadcastRoom(room);
+    ack({ ok: true, room: roomSnapshot(room) });
+  });
+
+  socket.on("startMatch", (data, ack) => {
+    const username = data && tokens.get(data.token);
+    const room = findRoomBySocket(socket.id);
+    if (!username || !room) return ack && ack({ ok: false, error: "未登录或不在房间" });
+    if (room.ownerId !== socket.id) return ack && ack({ ok: false, error: "只有房主可以开始比赛" });
+    if (room.status !== "waiting") return ack && ack({ ok: false });
+    const startsAt = Date.now() + COUNTDOWN;
+    const endsAt = startsAt + MATCH_DURATION;
+    room.status = "playing";
+    clearLiveScoresTimer(room);
+    for (const p of room.players.values()) p.score = 0;
+    for (const p of room.players.values()) {
+      io.to(p.socketId).emit("matchStart", { startsAt, endsAt });
+    }
+    clearMatchTimer(room);
+    room.matchTimer = setTimeout(() => endMatch(room), endsAt - Date.now() + 500);
+    broadcastRoom(room);
+    if (ack) ack({ ok: true });
+  });
+
+  socket.on("scoreUpdate", (data) => {
+    const username = data && tokens.get(data.token);
+    const room = findRoomBySocket(socket.id);
+    if (!username || !room || room.status !== "playing") return;
+    const p = room.players.get(socket.id);
+    if (!p) return;
+    if (typeof data.score !== "number" || !isFinite(data.score)) return;
+    const score = Math.max(0, Math.round(data.score));
+    if (score === p.score) return;
+    p.score = score;
+    scheduleLiveScores(room);
+  });
+
+  socket.on("leaveRoom", () => {
+    removeFromRoom(socket.id);
+  });
+
+  socket.on("getLeaderboard", (ack) => {
+    const users = loadUsers();
+    const list = Object.entries(users)
+      .map(([username, u]) => ({ username, bestScore: u.bestScore || 0 }))
+      .sort((a, b) => b.bestScore - a.bestScore)
+      .slice(0, 10);
+    ack({ ok: true, list });
+  });
+
+  socket.on("disconnect", () => {
+    removeFromRoom(socket.id);
+  });
+});
+
+server.listen(PORT, () => {
+  console.log(`Fruit Ninja server running on port ${PORT}`);
+});
