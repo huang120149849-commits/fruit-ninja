@@ -60,10 +60,21 @@ const el = {
   roomCodeInput: document.getElementById("room-code-input"),
   joinRoomBtn: document.getElementById("join-room-btn"),
   leaderboardBody: document.getElementById("leaderboard-body"),
+  roleBadge: document.getElementById("role-badge"),
+  createHint: document.getElementById("create-hint"),
+  adminPanel: document.getElementById("admin-panel"),
+  adminUsername: document.getElementById("admin-username"),
+  adminAddBtn: document.getElementById("admin-add-btn"),
+  adminRemoveBtn: document.getElementById("admin-remove-btn"),
+  adminList: document.getElementById("admin-list"),
+  adminMsg: document.getElementById("admin-msg"),
   roomCodeLabel: document.getElementById("room-code-label"),
+  roomAdmin: document.getElementById("room-admin"),
   roomStatus: document.getElementById("room-status"),
   roomPlayers: document.getElementById("room-players"),
   startMatchBtn: document.getElementById("start-match-btn"),
+  waitAdminBtn: document.getElementById("wait-admin-btn"),
+  deleteRoomBtn: document.getElementById("delete-room-btn"),
   leaveRoomBtn: document.getElementById("leave-room-btn"),
   countdownEl: document.getElementById("countdown-el"),
   gameTimer: document.getElementById("game-timer"),
@@ -117,10 +128,11 @@ el.authForm.addEventListener("submit", (e) => {
 });
 
 function completeAuth(res) {
-  currentUser = { username: res.username, token: res.token, bestScore: res.bestScore || 0 };
+  currentUser = { username: res.username, token: res.token, bestScore: res.bestScore || 0, role: res.role || "user" };
   localStorage.setItem("fn-token", res.token);
   localStorage.setItem("fn-username", res.username);
   renderLobbyHeader();
+  renderRoleUI();
   refreshLeaderboard();
   showScreen("lobby");
 }
@@ -129,6 +141,51 @@ function renderLobbyHeader() {
   el.lobbyUsername.textContent = currentUser.username;
   el.lobbyBest.textContent = currentUser.bestScore;
 }
+
+function isAdmin() {
+  return currentUser && (currentUser.role === "admin" || currentUser.role === "superadmin");
+}
+
+function renderRoleUI() {
+  const roleText = currentUser.role === "superadmin" ? "🛡️ 超级管理员" : currentUser.role === "admin" ? "🛡️ 管理员" : "";
+  el.roleBadge.textContent = roleText;
+  el.roleBadge.classList.toggle("hidden", !roleText);
+  const canCreate = isAdmin();
+  el.createRoomBtn.classList.toggle("hidden", !canCreate);
+  el.createHint.classList.toggle("hidden", canCreate);
+  el.adminPanel.classList.toggle("hidden", currentUser.role !== "superadmin");
+  if (currentUser.role === "superadmin") refreshAdminList();
+}
+
+function refreshAdminList() {
+  socket.emit("getAdmins", { token: currentUser.token }, (res) => {
+    if (!res || !res.ok) return;
+    el.adminList.innerHTML = "";
+    res.list.forEach((u) => {
+      const li = document.createElement("li");
+      li.textContent = (u.role === "superadmin" ? "🛡️ " : "🛡️ ") + u.username + (u.role === "superadmin" ? " (超级)" : " (管理员)");
+      el.adminList.appendChild(li);
+    });
+  });
+}
+
+el.adminAddBtn.addEventListener("click", () => {
+  const username = el.adminUsername.value.trim();
+  if (!username) return;
+  socket.emit("setAdmin", { token: currentUser.token, username, makeAdmin: true }, (res) => {
+    el.adminMsg.textContent = res.ok ? `已将 ${username} 设为管理员` : res.error || "操作失败";
+    if (res.ok) { el.adminUsername.value = ""; refreshAdminList(); }
+  });
+});
+
+el.adminRemoveBtn.addEventListener("click", () => {
+  const username = el.adminUsername.value.trim();
+  if (!username) return;
+  socket.emit("setAdmin", { token: currentUser.token, username, makeAdmin: false }, (res) => {
+    el.adminMsg.textContent = res.ok ? `已取消 ${username} 的管理员权限` : res.error || "操作失败";
+    if (res.ok) { el.adminUsername.value = ""; refreshAdminList(); }
+  });
+});
 
 function refreshLeaderboard() {
   socket.emit("getLeaderboard", (res) => {
@@ -175,6 +232,7 @@ el.joinRoomBtn.addEventListener("click", () => {
 function renderRoom() {
   if (!roomInfo) return;
   el.roomCodeLabel.textContent = roomInfo.code;
+  el.roomAdmin.textContent = "主持人: " + (roomInfo.admin || roomInfo.owner || "-");
   el.roomStatus.textContent =
     roomInfo.status === "playing"
       ? `🔴 比赛进行中... (${roomInfo.players.length}/${roomInfo.maxPlayers}人)`
@@ -182,13 +240,33 @@ function renderRoom() {
   el.roomPlayers.innerHTML = "";
   roomInfo.players.forEach((p) => {
     const li = document.createElement("li");
-    li.textContent = (p.username === roomInfo.owner ? "👑 " : "👤 ") + p.username;
+    const isHost = roomInfo.admin && p.username === roomInfo.admin;
+    li.textContent = (isHost ? "👑 " : roomInfo.owner === p.username ? "🎙️ " : "👤 ") + p.username;
     el.roomPlayers.appendChild(li);
   });
-  el.startMatchBtn.classList.toggle("hidden", roomInfo.status !== "waiting");
-  el.startMatchBtn.disabled = roomInfo.status !== "waiting";
+  const isHostAdmin = isAdmin();
+  const waiting = roomInfo.status === "waiting";
+  el.startMatchBtn.classList.toggle("hidden", !isHostAdmin || !waiting);
+  el.startMatchBtn.disabled = !waiting;
   el.startMatchBtn.textContent = roomInfo.players.length === 1 ? "🚀 开始比赛 (单人练习, 60秒)" : "🚀 开始比赛 (60秒)";
+  el.waitAdminBtn.classList.toggle("hidden", isHostAdmin || !waiting);
+  el.deleteRoomBtn.classList.toggle("hidden", !isHostAdmin);
+  el.deleteRoomBtn.disabled = !waiting;
 }
+
+el.deleteRoomBtn.addEventListener("click", () => {
+  if (!confirm("确定关闭该房间吗？所有玩家将被移出。")) return;
+  socket.emit("deleteRoom", { token: currentUser.token, code: roomInfo.code }, (res) => {
+    if (res && !res.ok) alert(res.error || "关闭失败");
+  });
+});
+
+socket.on("roomClosed", () => {
+  roomInfo = null;
+  hideToast();
+  refreshLeaderboard();
+  showScreen("lobby");
+});
 
 el.startMatchBtn.addEventListener("click", () => {
   el.startMatchBtn.disabled = true;
@@ -682,6 +760,43 @@ canvas.addEventListener("mouseup", () => {
 });
 
 canvas.addEventListener("mouseleave", () => {
+  game.mouse.active = false;
+});
+
+canvas.addEventListener("touchstart", (e) => {
+  e.preventDefault();
+  if (game.phase !== "playing") return;
+  const t = e.changedTouches[0];
+  const pos = getCanvasPos({ clientX: t.clientX, clientY: t.clientY });
+  game.mouse.x = pos.x;
+  game.mouse.y = pos.y;
+  game.mouse.px = pos.x;
+  game.mouse.py = pos.y;
+  game.mouse.active = true;
+  AudioMan.playSlice();
+}, { passive: false });
+
+canvas.addEventListener("touchmove", (e) => {
+  e.preventDefault();
+  if (game.phase !== "playing") return;
+  const t = e.changedTouches[0];
+  const pos = getCanvasPos({ clientX: t.clientX, clientY: t.clientY });
+  game.mouse.px = game.mouse.x;
+  game.mouse.py = game.mouse.y;
+  game.mouse.x = pos.x;
+  game.mouse.y = pos.y;
+  if (game.mouse.active) {
+    game.slices.push({ x1: game.mouse.px, y1: game.mouse.py, x2: game.mouse.x, y2: game.mouse.y, life: 1 });
+    checkSlices();
+  }
+}, { passive: false });
+
+canvas.addEventListener("touchend", (e) => {
+  e.preventDefault();
+  game.mouse.active = false;
+}, { passive: false });
+
+canvas.addEventListener("touchcancel", () => {
   game.mouse.active = false;
 });
 

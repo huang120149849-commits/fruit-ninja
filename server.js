@@ -9,6 +9,7 @@ const PORT = process.env.PORT || 3000;
 const MATCH_DURATION = 60000;
 const COUNTDOWN = 3000;
 const MAX_PLAYERS = 100;
+const SUPER_ADMIN = (process.env.SUPER_ADMIN || "admin").trim();
 
 const app = express();
 const server = http.createServer(app);
@@ -59,10 +60,23 @@ function findRoomBySocket(socketId) {
   return null;
 }
 
+function getRole(username) {
+  const users = loadUsers();
+  const u = users[username];
+  if (u && u.role) return u.role;
+  if (username === SUPER_ADMIN) return "superadmin";
+  return "user";
+}
+
+function isAdminRole(role) {
+  return role === "admin" || role === "superadmin";
+}
+
 function roomSnapshot(room) {
   return {
     code: room.code,
     status: room.status,
+    admin: room.admin || null,
     owner: room.players.has(room.ownerId) ? room.players.get(room.ownerId).username : null,
     players: [...room.players.values()].map((p) => ({ username: p.username, score: p.score })),
     maxPlayers: MAX_PLAYERS,
@@ -144,11 +158,16 @@ function removeFromRoom(socketId) {
   if (room.players.size === 0) {
     clearMatchTimer(room);
     clearLiveScoresTimer(room);
+    if (room.preCreated) {
+      room.ownerId = null;
+      return;
+    }
     rooms.delete(room.code);
     return;
   }
   if (room.ownerId === socketId) {
-    room.ownerId = room.players.keys().next().value;
+    const newOwner = [...room.players.keys()].find((id) => isAdminRole(getRole(room.players.get(id).username)));
+    room.ownerId = newOwner || null;
   }
   broadcastRoom(room);
 }
@@ -172,12 +191,13 @@ io.on("connection", (socket) => {
       salt,
       hash: hashPassword(password, salt),
       bestScore: 0,
+      role: username === SUPER_ADMIN ? "superadmin" : "user",
       createdAt: Date.now(),
     };
     saveUsers(users);
     const token = makeToken();
     tokens.set(token, username);
-    ack({ ok: true, token, username, bestScore: 0 });
+    ack({ ok: true, token, username, bestScore: 0, role: users[username].role });
   });
 
   socket.on("login", ({ username, password }, ack) => {
@@ -190,7 +210,11 @@ io.on("connection", (socket) => {
     }
     const token = makeToken();
     tokens.set(token, username);
-    ack({ ok: true, token, username, bestScore: u.bestScore || 0 });
+    if (username === SUPER_ADMIN && u.role !== "superadmin") {
+      u.role = "superadmin";
+      saveUsers(users);
+    }
+    ack({ ok: true, token, username, bestScore: u.bestScore || 0, role: u.role || getRole(username) });
   });
 
   socket.on("loginWithToken", ({ token }, ack) => {
@@ -199,23 +223,45 @@ io.on("connection", (socket) => {
     const users = loadUsers();
     const u = users[username];
     if (!u) return ack({ ok: false });
-    ack({ ok: true, token, username, bestScore: u.bestScore || 0 });
+    ack({ ok: true, token, username, bestScore: u.bestScore || 0, role: u.role || getRole(username) });
   });
 
   socket.on("createRoom", (data, ack) => {
     const username = data && tokens.get(data.token);
     if (!username) return ack({ ok: false, error: "未登录" });
+    if (!isAdminRole(getRole(username))) {
+      return ack({ ok: false, error: "仅管理员可创建房间" });
+    }
     removeFromRoom(socket.id);
     const code = makeRoomCode();
     const room = {
       code,
       status: "waiting",
+      admin: username,
       ownerId: socket.id,
       players: new Map([[socket.id, { username, score: 0 }]]),
       matchTimer: null,
+      preCreated: true,
     };
     rooms.set(code, room);
     ack({ ok: true, room: roomSnapshot(room) });
+  });
+
+  socket.on("deleteRoom", (data, ack) => {
+    const username = data && tokens.get(data.token);
+    if (!username) return ack && ack({ ok: false, error: "未登录" });
+    const role = getRole(username);
+    const room = findRoomBySocket(socket.id) || rooms.get(String(data.code || "").trim().toUpperCase());
+    if (!room) return ack && ack({ ok: false, error: "房间不存在" });
+    if (!isAdminRole(role)) return ack && ack({ ok: false, error: "仅管理员可关闭房间" });
+    if (role !== "superadmin" && room.admin !== username) {
+      return ack && ack({ ok: false, error: "只能关闭自己创建的房间" });
+    }
+    clearMatchTimer(room);
+    clearLiveScoresTimer(room);
+    rooms.delete(room.code);
+    emitToPlayers(room, "roomClosed", { code: room.code });
+    if (ack) ack({ ok: true });
   });
 
   socket.on("joinRoom", (data, ack) => {
@@ -229,6 +275,10 @@ io.on("connection", (socket) => {
       return ack({ ok: false, error: `房间已满 (最多 ${MAX_PLAYERS} 人)` });
     }
     removeFromRoom(socket.id);
+    if (!room.ownerId && isAdminRole(getRole(username))) {
+      room.ownerId = socket.id;
+      room.admin = room.admin || username;
+    }
     room.players.set(socket.id, { username, score: 0 });
     broadcastRoom(room);
     ack({ ok: true, room: roomSnapshot(room) });
@@ -238,6 +288,9 @@ io.on("connection", (socket) => {
     const username = data && tokens.get(data.token);
     const room = findRoomBySocket(socket.id);
     if (!username || !room) return ack && ack({ ok: false, error: "未登录或不在房间" });
+    if (!isAdminRole(getRole(username))) {
+      return ack && ack({ ok: false, error: "仅管理员可开始比赛，请等待管理员启动" });
+    }
     if (room.status === "playing") return ack && ack({ ok: true });
     if (room.status !== "waiting") return ack && ack({ ok: false, error: "房间状态异常，请退出房间重新加入" });
     const startsAt = Date.now() + COUNTDOWN;
@@ -267,6 +320,37 @@ io.on("connection", (socket) => {
 
   socket.on("leaveRoom", () => {
     removeFromRoom(socket.id);
+  });
+
+  socket.on("setAdmin", (data, ack) => {
+    const username = data && tokens.get(data.token);
+    if (!username) return ack && ack({ ok: false, error: "未登录" });
+    if (getRole(username) !== "superadmin") {
+      return ack && ack({ ok: false, error: "仅超级管理员可设置管理员" });
+    }
+    const target = String(data.username || "").trim();
+    const users = loadUsers();
+    if (!users[target]) return ack && ack({ ok: false, error: "用户不存在" });
+    if (target === SUPER_ADMIN) return ack && ack({ ok: false, error: "超级管理员不可变更" });
+    const makeAdmin = !!data.makeAdmin;
+    if (makeAdmin) {
+      users[target].role = "admin";
+    } else {
+      delete users[target].role;
+    }
+    saveUsers(users);
+    ack({ ok: true, makeAdmin, role: users[target].role || "user" });
+  });
+
+  socket.on("getAdmins", (data, ack) => {
+    const username = data && tokens.get(data.token);
+    if (!username) return ack && ack({ ok: false, error: "未登录" });
+    if (!isAdminRole(getRole(username))) return ack && ack({ ok: false, error: "无权限" });
+    const users = loadUsers();
+    const list = Object.entries(users)
+      .filter(([, u]) => u.role === "admin" || u.role === "superadmin")
+      .map(([name, u]) => ({ username: name, role: u.role }));
+    ack({ ok: true, list });
   });
 
   socket.on("getLeaderboard", (ack) => {
