@@ -19,6 +19,8 @@ const game = {
   score: 0,
   fruits: [],
   particles: [],
+  halves: [],
+  shockwaves: [],
   slices: [],
   spawnTimer: 0,
   startsAt: 0,
@@ -499,30 +501,76 @@ function spawnFruit() {
   }
 }
 
-function spawnParticles(fruit) {
-  for (let i = 0; i < 14; i++) {
+function spawnParticles(fruit, juiceColor) {
+  const color = fruit.bomb ? "#2d3436" : juiceColor;
+  for (let i = 0; i < 16; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const speed = 2 + Math.random() * 5;
+    const speed = 2.5 + Math.random() * 6;
+    game.particles.push({
+      x: fruit.x,
+      y: fruit.y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 3,
+      life: 1,
+      r: 2 + Math.random() * 4,
+      color,
+    });
+  }
+}
+
+function spawnHalves(fruit, sliceAngle) {
+  const perp = sliceAngle + Math.PI / 2;
+  const jx = Math.cos(perp);
+  const jy = Math.sin(perp);
+  const data = fruit.bomb
+    ? { color: "#2d3436", inner: "#555555" }
+    : { color: fruit.type.color, inner: fruit.type.inner };
+  for (let side = -1; side <= 1; side += 2) {
+    game.halves.push({
+      x: fruit.x + jx * side * 8,
+      y: fruit.y + jy * side * 8,
+      vx: fruit.vx * 0.5 + jx * side * (2.5 + Math.random() * 2.5) + (Math.random() - 0.5) * 2,
+      vy: fruit.vy * 0.5 + (Math.random() - 0.5) * 3,
+      rotation: sliceAngle + (side > 0 ? 0 : Math.PI),
+      rotSpeed: (Math.random() - 0.5) * 0.18,
+      r: fruit.radius,
+      color: data.color,
+      inner: data.inner,
+      life: 1,
+    });
+  }
+}
+
+function spawnExplosion(fruit) {
+  const colors = ["#ff4757", "#ff6b81", "#ffa502", "#ffd32a", "#2d3436", "#dfe6e9"];
+  for (let i = 0; i < 30; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 3 + Math.random() * 7;
     game.particles.push({
       x: fruit.x,
       y: fruit.y,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed - 2,
       life: 1,
-      color: fruit.bomb ? "#2d3436" : fruit.type.inner,
+      r: 2 + Math.random() * 5,
+      color: colors[Math.floor(Math.random() * colors.length)],
     });
   }
+  game.shockwaves.push({ x: fruit.x, y: fruit.y, radius: 8, maxRadius: 100, life: 1 });
 }
 
-function sliceFruit(fruit) {
+function sliceFruit(fruit, sliceAngle) {
   if (fruit.sliced) return;
   fruit.sliced = true;
+  const angle = sliceAngle || 0;
   if (fruit.bomb) {
-    spawnParticles(fruit);
+    spawnHalves(fruit, angle);
+    spawnExplosion(fruit);
     AudioMan.playBomb();
     game.score = Math.max(0, game.score - 3);
   } else {
-    spawnParticles(fruit);
+    spawnHalves(fruit, angle);
+    spawnParticles(fruit, fruit.type.inner);
     AudioMan.playSplat();
     game.score += fruit.type.points;
   }
@@ -546,10 +594,11 @@ function segmentCircleHit(x1, y1, x2, y2, cx, cy, r) {
 function checkSlices() {
   const { px, py, x, y, active } = game.mouse;
   if (!active || (px === x && py === y)) return;
+  const sliceAngle = Math.atan2(y - py, x - px);
   for (const fruit of game.fruits) {
     if (fruit.sliced || fruit.y < -60) continue;
     if (segmentCircleHit(px, py, x, y, fruit.x, fruit.y, fruit.radius)) {
-      sliceFruit(fruit);
+      sliceFruit(fruit, sliceAngle);
     }
   }
 }
@@ -625,10 +674,41 @@ function drawSliceTrail() {
   ctx.restore();
 }
 
+function drawHalf(h) {
+  ctx.save();
+  ctx.translate(h.x, h.y);
+  ctx.rotate(h.rotation);
+  ctx.globalAlpha = Math.max(0, h.life);
+  ctx.fillStyle = h.color;
+  ctx.beginPath();
+  ctx.arc(0, 0, h.r, 0, Math.PI);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = h.inner;
+  ctx.beginPath();
+  ctx.arc(0, 0, h.r * 0.8, 0, Math.PI);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawShockwave(w) {
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, w.life);
+  ctx.strokeStyle = "#ffa502";
+  ctx.lineWidth = 5 * w.life;
+  ctx.beginPath();
+  ctx.arc(w.x, w.y, w.radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function resetGame() {
   game.score = 0;
   game.fruits = [];
   game.particles = [];
+  game.halves = [];
+  game.shockwaves = [];
   game.slices = [];
   game.spawnTimer = 0;
   game.lastEmit = 0;
@@ -701,6 +781,22 @@ function update(dt) {
   }
   game.particles = game.particles.filter((p) => p.life > 0);
 
+  for (const h of game.halves) {
+    h.x += h.vx;
+    h.y += h.vy;
+    h.vy += GRAVITY;
+    h.rotation += h.rotSpeed;
+    h.life -= 0.018;
+  }
+  game.halves = game.halves.filter((h) => h.life > 0 && h.y < canvas.height + 80);
+
+  for (const w of game.shockwaves) {
+    const t = 1 - w.life;
+    w.radius = w.maxRadius * t * t * (3 - 2 * t);
+    w.life -= 0.04;
+  }
+  game.shockwaves = game.shockwaves.filter((w) => w.life > 0);
+
   game.slices = game.slices.filter((s) => s.life > 0);
   for (const s of game.slices) s.life -= 0.05;
 }
@@ -708,15 +804,21 @@ function update(dt) {
 function render() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawSliceTrail();
+  for (const w of game.shockwaves) {
+    drawShockwave(w);
+  }
   for (const fruit of game.fruits) {
     drawFruit(fruit);
+  }
+  for (const h of game.halves) {
+    drawHalf(h);
   }
   for (const p of game.particles) {
     ctx.save();
     ctx.globalAlpha = Math.max(0, p.life);
     ctx.fillStyle = p.color;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, p.r || 5, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }

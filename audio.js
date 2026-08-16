@@ -50,6 +50,20 @@ const AudioMan = (() => {
     osc.stop(time + dur + 0.05);
   }
 
+  function sweepTone(freqFrom, freqTo, time, dur, type, vol, dest) {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freqFrom, time);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(20, freqTo), time + dur);
+    g.gain.setValueAtTime(0.0001, time);
+    g.gain.exponentialRampToValueAtTime(vol, time + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+    osc.connect(g).connect(dest || sfxGain);
+    osc.start(time);
+    osc.stop(time + dur + 0.05);
+  }
+
   function noise(freq, q, dur, vol, filterType) {
     const src = ctx.createBufferSource();
     src.buffer = noiseBuf;
@@ -113,32 +127,28 @@ const AudioMan = (() => {
     ensure();
     if (!ctx) return;
     noise(1800, 2, 0.12, 0.5);
+    noise(3200, 3, 0.06, 0.2, "bandpass");
   }
 
   function playSplat() {
     if (!sfxOn) return;
     ensure();
     if (!ctx) return;
-    tone(520, ctx.currentTime, 0.12, "sine", 0.45, sfxGain);
-    noise(800, 1, 0.15, 0.3, "lowpass");
+    const t = ctx.currentTime;
+    sweepTone(560, 150, t, 0.16, "sine", 0.55);
+    noise(900, 1, 0.2, 0.5, "lowpass");
+    noise(2600, 4, 0.07, 0.22, "bandpass");
   }
 
   function playBomb() {
     if (!sfxOn) return;
     ensure();
     if (!ctx) return;
-    const osc = ctx.createOscillator();
-    const g = ctx.createGain();
     const t = ctx.currentTime;
-    osc.type = "sawtooth";
-    osc.frequency.setValueAtTime(140, t);
-    osc.frequency.exponentialRampToValueAtTime(40, t + 0.5);
-    g.gain.setValueAtTime(0.5, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
-    osc.connect(g).connect(sfxGain);
-    osc.start(t);
-    osc.stop(t + 0.55);
-    noise(300, 1, 0.4, 0.5, "lowpass");
+    sweepTone(130, 34, t, 0.55, "sawtooth", 0.55);
+    sweepTone(60, 25, t, 0.6, "sine", 0.6);
+    noise(300, 1, 0.5, 0.6, "lowpass");
+    noise(4200, 4, 0.18, 0.3, "highpass");
   }
 
   function playClick() {
