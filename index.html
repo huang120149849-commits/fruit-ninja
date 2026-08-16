@@ -36,19 +36,13 @@
           <button id="music-toggle" class="icon-btn">🎵 音乐: 开</button>
           <button id="sfx-toggle" class="icon-btn">🔊 音效: 开</button>
           <button id="logout-btn" class="icon-btn">退出登录</button>
+          <button id="lobby-back-btn" class="icon-btn">返回游戏</button>
         </div>
       </header>
       <main class="lobby-main">
         <div class="panel lobby-left">
-          <h2>🎮 多人对战</h2>
-          <p id="create-hint" class="hint hidden">🔒 创建房间需管理员权限</p>
-          <button id="create-room-btn" class="big-btn">➕ 创建房间</button>
-          <div class="join-row">
-            <input id="room-code-input" placeholder="输入房间号" maxlength="6">
-            <button id="join-room-btn" class="big-btn">加入房间</button>
-          </div>
+          <h2>🛡️ 管理员管理</h2>
           <div id="admin-panel" class="hidden">
-            <h3>🛡️ 管理员管理</h3>
             <div class="join-row">
               <input id="admin-username" placeholder="用户名" maxlength="16">
               <button id="admin-add-btn" class="big-btn">设为管理员</button>
@@ -71,25 +65,16 @@
       </main>
     </div>
 
-    <div id="room-screen" class="screen">
-      <div class="panel room-panel">
-        <h2>房间号: <span id="room-code-label"></span></h2>
-        <p id="room-admin" class="hint">主持人: -</p>
-        <p id="room-status"></p>
-        <ul id="room-players"></ul>
-        <div class="room-btns">
-          <button id="start-match-btn" class="big-btn hidden">🚀 开始比赛 (60秒)</button>
-          <button id="wait-admin-btn" class="big-btn ghost hidden">⏳ 等待管理员开始比赛...</button>
-          <button id="delete-room-btn" class="big-btn danger hidden">🗑️ 关闭房间</button>
-          <button id="leave-room-btn" class="big-btn ghost">离开房间</button>
-        </div>
-      </div>
-    </div>
-
     <div id="game-screen" class="screen">
       <div id="game-wrap">
         <div id="game-container">
           <canvas id="game-canvas"></canvas>
+          <div id="waiting-overlay">
+            <h2>🍉 水果忍者</h2>
+            <p id="waiting-msg">⏳ 等待管理员开始比赛...</p>
+            <p id="online-count">在线玩家: 0</p>
+            <button id="start-match-btn" class="big-btn hidden">🚀 开始比赛 (60秒)</button>
+          </div>
           <div id="countdown-el" class="hidden"></div>
           <div id="game-hud">
             <span id="game-timer">60s</span>
@@ -97,8 +82,14 @@
           </div>
         </div>
         <aside id="sidebar">
-          <h3>📊 实时排名</h3>
+          <h3 id="sidebar-title">📊 实时排名</h3>
           <ul id="live-ranks"></ul>
+          <div class="game-tools">
+            <button id="game-music-toggle" class="icon-btn">🎵 音乐: 开</button>
+            <button id="game-sfx-toggle" class="icon-btn">🔊 音效: 开</button>
+            <button id="leaderboard-btn" class="icon-btn">🏆 排行榜</button>
+            <button id="game-logout-btn" class="icon-btn">退出</button>
+          </div>
         </aside>
       </div>
     </div>
@@ -108,8 +99,7 @@
         <h2>🏁 比赛结束</h2>
         <ul id="result-ranking"></ul>
         <div class="room-btns">
-          <button id="back-to-room-btn" class="big-btn">返回房间</button>
-          <button id="back-to-lobby-btn" class="big-btn ghost">返回大厅</button>
+          <button id="result-back-btn" class="big-btn">返回等待</button>
         </div>
       </div>
     </div>

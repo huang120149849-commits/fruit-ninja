@@ -39,13 +39,12 @@ const game = {
 };
 
 let currentUser = null;
-let roomInfo = null;
+let arenaInfo = null;
 let liveScores = [];
 
 const screens = {
   auth: document.getElementById("auth-screen"),
   lobby: document.getElementById("lobby-screen"),
-  room: document.getElementById("room-screen"),
   game: document.getElementById("game-screen"),
   result: document.getElementById("result-screen"),
 };
@@ -66,33 +65,30 @@ const el = {
   musicToggle: document.getElementById("music-toggle"),
   sfxToggle: document.getElementById("sfx-toggle"),
   logoutBtn: document.getElementById("logout-btn"),
-  createRoomBtn: document.getElementById("create-room-btn"),
-  roomCodeInput: document.getElementById("room-code-input"),
-  joinRoomBtn: document.getElementById("join-room-btn"),
+  gameMusicToggle: document.getElementById("game-music-toggle"),
+  gameSfxToggle: document.getElementById("game-sfx-toggle"),
+  gameLogoutBtn: document.getElementById("game-logout-btn"),
+  leaderboardBtn: document.getElementById("leaderboard-btn"),
+  lobbyBackBtn: document.getElementById("lobby-back-btn"),
   leaderboardBody: document.getElementById("leaderboard-body"),
   roleBadge: document.getElementById("role-badge"),
-  createHint: document.getElementById("create-hint"),
   adminPanel: document.getElementById("admin-panel"),
   adminUsername: document.getElementById("admin-username"),
   adminAddBtn: document.getElementById("admin-add-btn"),
   adminRemoveBtn: document.getElementById("admin-remove-btn"),
   adminList: document.getElementById("admin-list"),
   adminMsg: document.getElementById("admin-msg"),
-  roomCodeLabel: document.getElementById("room-code-label"),
-  roomAdmin: document.getElementById("room-admin"),
-  roomStatus: document.getElementById("room-status"),
-  roomPlayers: document.getElementById("room-players"),
   startMatchBtn: document.getElementById("start-match-btn"),
-  waitAdminBtn: document.getElementById("wait-admin-btn"),
-  deleteRoomBtn: document.getElementById("delete-room-btn"),
-  leaveRoomBtn: document.getElementById("leave-room-btn"),
+  waitingOverlay: document.getElementById("waiting-overlay"),
+  waitingMsg: document.getElementById("waiting-msg"),
+  onlineCount: document.getElementById("online-count"),
+  sidebarTitle: document.getElementById("sidebar-title"),
   countdownEl: document.getElementById("countdown-el"),
   gameTimer: document.getElementById("game-timer"),
   gameScore: document.getElementById("game-score"),
   liveRanks: document.getElementById("live-ranks"),
   resultRanking: document.getElementById("result-ranking"),
-  backToRoomBtn: document.getElementById("back-to-room-btn"),
-  backToLobbyBtn: document.getElementById("back-to-lobby-btn"),
+  resultBackBtn: document.getElementById("result-back-btn"),
   beatOverlay: document.getElementById("beat-overlay"),
   rememberChk: document.getElementById("remember-chk"),
 };
@@ -151,7 +147,9 @@ function completeAuth(res) {
   renderLobbyHeader();
   renderRoleUI();
   refreshLeaderboard();
-  showScreen("lobby");
+  resetGame();
+  showScreen("game");
+  renderArena();
 }
 
 function prefillCredentials() {
@@ -180,11 +178,32 @@ function renderRoleUI() {
   const roleText = currentUser.role === "superadmin" ? "🛡️ 超级管理员" : currentUser.role === "admin" ? "🛡️ 管理员" : "";
   el.roleBadge.textContent = roleText;
   el.roleBadge.classList.toggle("hidden", !roleText);
-  const canCreate = isAdmin();
-  el.createRoomBtn.classList.toggle("hidden", !canCreate);
-  el.createHint.classList.toggle("hidden", canCreate);
   el.adminPanel.classList.toggle("hidden", currentUser.role !== "superadmin");
   if (currentUser.role === "superadmin") refreshAdminList();
+  renderArena();
+}
+
+function renderArena() {
+  const waiting = !arenaInfo || arenaInfo.status === "waiting";
+  el.onlineCount.textContent = "在线玩家: " + (arenaInfo ? arenaInfo.players.length : 0);
+  el.waitingOverlay.classList.toggle("hidden", !waiting);
+  el.sidebarTitle.textContent = waiting ? "👥 在线玩家" : "📊 实时排名";
+  el.startMatchBtn.classList.toggle("hidden", !(isAdmin() && waiting));
+  el.startMatchBtn.disabled = !waiting;
+  if (waiting) {
+    el.liveRanks.innerHTML = "";
+    if (arenaInfo) {
+      arenaInfo.players.forEach((p) => {
+        const li = document.createElement("li");
+        const badge = p.role === "superadmin" ? "🛡️" : p.role === "admin" ? "🛡️" : "👤";
+        li.textContent = badge + " " + p.username + (p.username === currentUser.username ? " (我)" : "");
+        if (p.username === currentUser.username) li.classList.add("me");
+        el.liveRanks.appendChild(li);
+      });
+    }
+  } else {
+    renderLiveScores();
+  }
 }
 
 function refreshAdminList() {
@@ -193,7 +212,7 @@ function refreshAdminList() {
     el.adminList.innerHTML = "";
     res.list.forEach((u) => {
       const li = document.createElement("li");
-      li.textContent = (u.role === "superadmin" ? "🛡️ " : "🛡️ ") + u.username + (u.role === "superadmin" ? " (超级)" : " (管理员)");
+      li.textContent = "🛡️ " + u.username + (u.role === "superadmin" ? " (超级)" : " (管理员)");
       el.adminList.appendChild(li);
     });
   });
@@ -230,74 +249,6 @@ function refreshLeaderboard() {
   });
 }
 
-el.createRoomBtn.addEventListener("click", () => {
-  socket.emit("createRoom", { token: currentUser.token }, (res) => {
-    if (!res.ok) {
-      el.lobbyMsg.textContent = res.error || "创建失败";
-      return;
-    }
-    el.lobbyMsg.textContent = "";
-    roomInfo = res.room;
-    renderRoom();
-    showScreen("room");
-  });
-});
-
-el.joinRoomBtn.addEventListener("click", () => {
-  const code = el.roomCodeInput.value.trim().toUpperCase();
-  if (!code) return;
-  socket.emit("joinRoom", { token: currentUser.token, code }, (res) => {
-    if (!res.ok) {
-      el.lobbyMsg.textContent = res.error || "加入失败";
-      return;
-    }
-    el.lobbyMsg.textContent = "";
-    el.roomCodeInput.value = "";
-    roomInfo = res.room;
-    renderRoom();
-    showScreen("room");
-  });
-});
-
-function renderRoom() {
-  if (!roomInfo) return;
-  el.roomCodeLabel.textContent = roomInfo.code;
-  el.roomAdmin.textContent = "主持人: " + (roomInfo.admin || roomInfo.owner || "-");
-  el.roomStatus.textContent =
-    roomInfo.status === "playing"
-      ? `🔴 比赛进行中... (${roomInfo.players.length}/${roomInfo.maxPlayers}人)`
-      : `🟢 等待玩家... (${roomInfo.players.length}/${roomInfo.maxPlayers}人)`;
-  el.roomPlayers.innerHTML = "";
-  roomInfo.players.forEach((p) => {
-    const li = document.createElement("li");
-    const isHost = roomInfo.admin && p.username === roomInfo.admin;
-    li.textContent = (isHost ? "👑 " : roomInfo.owner === p.username ? "🎙️ " : "👤 ") + p.username;
-    el.roomPlayers.appendChild(li);
-  });
-  const isHostAdmin = isAdmin();
-  const waiting = roomInfo.status === "waiting";
-  el.startMatchBtn.classList.toggle("hidden", !isHostAdmin || !waiting);
-  el.startMatchBtn.disabled = !waiting;
-  el.startMatchBtn.textContent = roomInfo.players.length === 1 ? "🚀 开始比赛 (单人练习, 60秒)" : "🚀 开始比赛 (60秒)";
-  el.waitAdminBtn.classList.toggle("hidden", isHostAdmin || !waiting);
-  el.deleteRoomBtn.classList.toggle("hidden", !isHostAdmin);
-  el.deleteRoomBtn.disabled = !waiting;
-}
-
-el.deleteRoomBtn.addEventListener("click", () => {
-  if (!confirm("确定关闭该房间吗？所有玩家将被移出。")) return;
-  socket.emit("deleteRoom", { token: currentUser.token, code: roomInfo.code }, (res) => {
-    if (res && !res.ok) alert(res.error || "关闭失败");
-  });
-});
-
-socket.on("roomClosed", () => {
-  roomInfo = null;
-  hideToast();
-  refreshLeaderboard();
-  showScreen("lobby");
-});
-
 el.startMatchBtn.addEventListener("click", () => {
   el.startMatchBtn.disabled = true;
   socket.emit("startMatch", { token: currentUser.token }, (res) => {
@@ -308,39 +259,39 @@ el.startMatchBtn.addEventListener("click", () => {
   });
 });
 
-el.leaveRoomBtn.addEventListener("click", () => {
-  socket.emit("leaveRoom");
-  roomInfo = null;
+el.leaderboardBtn.addEventListener("click", () => {
   refreshLeaderboard();
   showScreen("lobby");
 });
 
-el.backToRoomBtn.addEventListener("click", () => {
-  showScreen("room");
-  renderRoom();
+el.lobbyBackBtn.addEventListener("click", () => {
+  showScreen("game");
+  renderArena();
 });
 
-el.backToLobbyBtn.addEventListener("click", () => {
-  socket.emit("leaveRoom");
-  roomInfo = null;
-  refreshLeaderboard();
-  showScreen("lobby");
+el.resultBackBtn.addEventListener("click", () => {
+  game.phase = "idle";
+  showScreen("game");
+  renderArena();
 });
 
-el.logoutBtn.addEventListener("click", () => {
+el.logoutBtn.addEventListener("click", logout);
+el.gameLogoutBtn.addEventListener("click", logout);
+
+function logout() {
   currentUser = null;
-  roomInfo = null;
+  arenaInfo = null;
   localStorage.removeItem("fn-token");
   localStorage.removeItem("fn-username");
-  socket.emit("leaveRoom");
   el.authForm.reset();
   setAuthMode("login");
   showScreen("auth");
-});
+}
 
-socket.on("roomUpdate", (room) => {
-  roomInfo = room;
-  if (screens.room.classList.contains("active")) renderRoom();
+socket.on("arenaUpdate", (snap) => {
+  arenaInfo = snap;
+  if (screens.game.classList.contains("active")) renderArena();
+  if (screens.lobby.classList.contains("active") && isAdmin()) refreshAdminList();
 });
 
 socket.on("matchStart", ({ startsAt, endsAt }) => {
@@ -350,19 +301,22 @@ socket.on("matchStart", ({ startsAt, endsAt }) => {
   game.startsAt = startsAt;
   game.endsAt = endsAt;
   game.lastCountdown = 0;
+  el.waitingOverlay.classList.add("hidden");
   el.countdownEl.classList.remove("hidden");
   el.countdownEl.textContent = "3";
   showScreen("game");
 });
 
+
 socket.on("liveScores", ({ scores }) => {
   liveScores = scores;
-  renderLiveScores();
+  if (!arenaInfo || arenaInfo.status !== "waiting") renderLiveScores();
 });
 
 socket.on("matchEnd", ({ ranking }) => {
   game.phase = "idle";
   game.mouse.active = false;
+  AudioMan.setIntensity(0);
   renderResults(ranking);
   showScreen("result");
 });
@@ -382,7 +336,7 @@ socket.on("connect", () => {
   socket.emit("loginWithToken", { token }, (res) => {
     if (!res || !res.ok) {
       currentUser = null;
-      roomInfo = null;
+      arenaInfo = null;
       localStorage.removeItem("fn-token");
       localStorage.removeItem("fn-username");
       hideToast();
@@ -392,24 +346,8 @@ socket.on("connect", () => {
       return;
     }
     completeAuth(res);
-    if (roomInfo && roomInfo.code) {
-      socket.emit("joinRoom", { token: res.token, code: roomInfo.code }, (jr) => {
-        if (jr && jr.ok) {
-          roomInfo = jr.room;
-          hideToast();
-          if (screens.room.classList.contains("active")) renderRoom();
-          else showScreen("room");
-        } else {
-          roomInfo = null;
-          hideToast();
-          el.lobbyMsg.textContent = "已重新连接（原房间已失效）";
-          showScreen("lobby");
-        }
-      });
-    } else {
-      hideToast();
-      showScreen("lobby");
-    }
+    hideToast();
+    showScreen("game");
   });
 });
 
@@ -459,6 +397,8 @@ function updateAudioButtons() {
   el.musicToggle.textContent = musicLabel;
   el.authMusicBtn.textContent = musicLabel;
   el.sfxToggle.textContent = sfxLabel;
+  if (el.gameMusicToggle) el.gameMusicToggle.textContent = musicLabel;
+  if (el.gameSfxToggle) el.gameSfxToggle.textContent = sfxLabel;
 }
 
 el.musicToggle.addEventListener("click", () => {
@@ -470,6 +410,20 @@ el.sfxToggle.addEventListener("click", () => {
   AudioMan.setSfx(!AudioMan.sfxOn);
   updateAudioButtons();
 });
+
+if (el.gameMusicToggle) {
+  el.gameMusicToggle.addEventListener("click", () => {
+    AudioMan.setMusic(!AudioMan.musicOn);
+    updateAudioButtons();
+  });
+}
+
+if (el.gameSfxToggle) {
+  el.gameSfxToggle.addEventListener("click", () => {
+    AudioMan.setSfx(!AudioMan.sfxOn);
+    updateAudioButtons();
+  });
+}
 
 el.authMusicBtn.addEventListener("click", () => {
   AudioMan.setMusic(!AudioMan.musicOn);

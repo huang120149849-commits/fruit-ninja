@@ -8,7 +8,6 @@ const { Server } = require("socket.io");
 const PORT = process.env.PORT || 3000;
 const MATCH_DURATION = 60000;
 const COUNTDOWN = 3000;
-const MAX_PLAYERS = 100;
 const SUPER_ADMIN = (process.env.SUPER_ADMIN || "admin").trim();
 
 const app = express();
@@ -38,26 +37,9 @@ function hashPassword(password, salt) {
 }
 
 const tokens = new Map();
-const rooms = new Map();
 
 function makeToken() {
   return crypto.randomBytes(24).toString("hex");
-}
-
-function makeRoomCode() {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let code;
-  do {
-    code = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
-  } while (rooms.has(code));
-  return code;
-}
-
-function findRoomBySocket(socketId) {
-  for (const room of rooms.values()) {
-    if (room.players.has(socketId)) return room;
-  }
-  return null;
 }
 
 function getRole(username) {
@@ -72,41 +54,83 @@ function isAdminRole(role) {
   return role === "admin" || role === "superadmin";
 }
 
-function roomSnapshot(room) {
+const arena = {
+  status: "waiting",
+  players: new Map(),
+  matchTimer: null,
+  liveScoresTimer: null,
+  liveScoresPending: false,
+  lastLiveScoresAt: 0,
+};
+
+function arenaSnapshot() {
   return {
-    code: room.code,
-    status: room.status,
-    admin: room.admin || null,
-    owner: room.players.has(room.ownerId) ? room.players.get(room.ownerId).username : null,
-    players: [...room.players.values()].map((p) => ({ username: p.username, score: p.score })),
-    maxPlayers: MAX_PLAYERS,
+    status: arena.status,
+    players: [...arena.players.values()].map((p) => ({ username: p.username, score: p.score, role: p.role })),
   };
 }
 
-function emitToPlayers(room, event, payload) {
-  for (const socketId of room.players.keys()) {
+function broadcastArena(event, payload) {
+  for (const socketId of arena.players.keys()) {
     io.to(socketId).emit(event, payload);
   }
 }
 
-function broadcastRoom(room) {
-  const snap = roomSnapshot(room);
-  emitToPlayers(room, "roomUpdate", snap);
-}
-
-function clearMatchTimer(room) {
-  if (room.matchTimer) {
-    clearTimeout(room.matchTimer);
-    room.matchTimer = null;
+function addToArena(socket, username, role) {
+  if (!arena.players.has(socket.id)) {
+    arena.players.set(socket.id, { username, score: 0, role });
+    broadcastArena("arenaUpdate", arenaSnapshot());
+  } else {
+    const p = arena.players.get(socket.id);
+    p.username = username;
+    p.role = role;
   }
 }
 
-function endMatch(room) {
-  clearMatchTimer(room);
-  clearLiveScoresTimer(room);
-  if (!rooms.has(room.code)) return;
-  room.status = "waiting";
-  const ranking = [...room.players.values()]
+function removeFromArena(socketId) {
+  if (arena.players.delete(socketId)) {
+    broadcastArena("arenaUpdate", arenaSnapshot());
+  }
+}
+
+function clearMatchTimer() {
+  if (arena.matchTimer) {
+    clearTimeout(arena.matchTimer);
+    arena.matchTimer = null;
+  }
+}
+
+function clearLiveScoresTimer() {
+  if (arena.liveScoresTimer) {
+    clearTimeout(arena.liveScoresTimer);
+    arena.liveScoresTimer = null;
+  }
+  arena.liveScoresPending = false;
+}
+
+function scheduleLiveScores() {
+  if (arena.liveScoresPending) return;
+  const elapsed = Date.now() - (arena.lastLiveScoresAt || 0);
+  const delay = Math.max(0, 500 - elapsed);
+  arena.liveScoresPending = true;
+  arena.liveScoresTimer = setTimeout(() => {
+    arena.liveScoresPending = false;
+    arena.liveScoresTimer = null;
+    arena.lastLiveScoresAt = Date.now();
+    if (arena.status !== "playing") return;
+    const scores = [...arena.players.values()]
+      .map((x) => ({ username: x.username, score: x.score }))
+      .sort((a, b) => b.score - a.score);
+    broadcastArena("liveScores", { scores });
+  }, delay);
+}
+
+function endMatch() {
+  clearMatchTimer();
+  clearLiveScoresTimer();
+  if (arena.status !== "playing") return;
+  arena.status = "waiting";
+  const ranking = [...arena.players.values()]
     .map((p) => ({ username: p.username, score: p.score }))
     .sort((a, b) => b.score - a.score);
   const users = loadUsers();
@@ -119,57 +143,9 @@ function endMatch(room) {
     }
   }
   if (changed) saveUsers(users);
-  for (const p of room.players.values()) {
-    p.score = 0;
-  }
-  emitToPlayers(room, "matchEnd", { ranking });
-  broadcastRoom(room);
-}
-
-function clearLiveScoresTimer(room) {
-  if (room.liveScoresTimer) {
-    clearTimeout(room.liveScoresTimer);
-    room.liveScoresTimer = null;
-  }
-  room.liveScoresPending = false;
-}
-
-function scheduleLiveScores(room) {
-  if (room.liveScoresPending) return;
-  const elapsed = Date.now() - (room.lastLiveScoresAt || 0);
-  const delay = Math.max(0, 500 - elapsed);
-  room.liveScoresPending = true;
-  room.liveScoresTimer = setTimeout(() => {
-    room.liveScoresPending = false;
-    room.liveScoresTimer = null;
-    room.lastLiveScoresAt = Date.now();
-    if (!rooms.has(room.code)) return;
-    const scores = [...room.players.values()]
-      .map((x) => ({ username: x.username, score: x.score }))
-      .sort((a, b) => b.score - a.score);
-    emitToPlayers(room, "liveScores", { scores });
-  }, delay);
-}
-
-function removeFromRoom(socketId) {
-  const room = findRoomBySocket(socketId);
-  if (!room) return;
-  room.players.delete(socketId);
-  if (room.players.size === 0) {
-    clearMatchTimer(room);
-    clearLiveScoresTimer(room);
-    if (room.preCreated) {
-      room.ownerId = null;
-      return;
-    }
-    rooms.delete(room.code);
-    return;
-  }
-  if (room.ownerId === socketId) {
-    const newOwner = [...room.players.keys()].find((id) => isAdminRole(getRole(room.players.get(id).username)));
-    room.ownerId = newOwner || null;
-  }
-  broadcastRoom(room);
+  for (const p of arena.players.values()) p.score = 0;
+  broadcastArena("matchEnd", { ranking });
+  broadcastArena("arenaUpdate", arenaSnapshot());
 }
 
 io.on("connection", (socket) => {
@@ -197,7 +173,9 @@ io.on("connection", (socket) => {
     saveUsers(users);
     const token = makeToken();
     tokens.set(token, username);
-    ack({ ok: true, token, username, bestScore: 0, role: users[username].role });
+    const role = users[username].role;
+    addToArena(socket, username, role);
+    ack({ ok: true, token, username, bestScore: 0, role });
   });
 
   socket.on("login", ({ username, password }, ack) => {
@@ -208,13 +186,15 @@ io.on("connection", (socket) => {
     if (!u || hashPassword(password, u.salt) !== u.hash) {
       return ack({ ok: false, error: "用户名或密码错误" });
     }
-    const token = makeToken();
-    tokens.set(token, username);
     if (username === SUPER_ADMIN && u.role !== "superadmin") {
       u.role = "superadmin";
       saveUsers(users);
     }
-    ack({ ok: true, token, username, bestScore: u.bestScore || 0, role: u.role || getRole(username) });
+    const token = makeToken();
+    tokens.set(token, username);
+    const role = u.role || getRole(username);
+    addToArena(socket, username, role);
+    ack({ ok: true, token, username, bestScore: u.bestScore || 0, role });
   });
 
   socket.on("loginWithToken", ({ token }, ack) => {
@@ -223,103 +203,41 @@ io.on("connection", (socket) => {
     const users = loadUsers();
     const u = users[username];
     if (!u) return ack({ ok: false });
-    ack({ ok: true, token, username, bestScore: u.bestScore || 0, role: u.role || getRole(username) });
-  });
-
-  socket.on("createRoom", (data, ack) => {
-    const username = data && tokens.get(data.token);
-    if (!username) return ack({ ok: false, error: "未登录" });
-    if (!isAdminRole(getRole(username))) {
-      return ack({ ok: false, error: "仅管理员可创建房间" });
-    }
-    removeFromRoom(socket.id);
-    const code = makeRoomCode();
-    const room = {
-      code,
-      status: "waiting",
-      admin: username,
-      ownerId: socket.id,
-      players: new Map([[socket.id, { username, score: 0 }]]),
-      matchTimer: null,
-      preCreated: true,
-    };
-    rooms.set(code, room);
-    ack({ ok: true, room: roomSnapshot(room) });
-  });
-
-  socket.on("deleteRoom", (data, ack) => {
-    const username = data && tokens.get(data.token);
-    if (!username) return ack && ack({ ok: false, error: "未登录" });
-    const role = getRole(username);
-    const room = findRoomBySocket(socket.id) || rooms.get(String(data.code || "").trim().toUpperCase());
-    if (!room) return ack && ack({ ok: false, error: "房间不存在" });
-    if (!isAdminRole(role)) return ack && ack({ ok: false, error: "仅管理员可关闭房间" });
-    if (role !== "superadmin" && room.admin !== username) {
-      return ack && ack({ ok: false, error: "只能关闭自己创建的房间" });
-    }
-    clearMatchTimer(room);
-    clearLiveScoresTimer(room);
-    rooms.delete(room.code);
-    emitToPlayers(room, "roomClosed", { code: room.code });
-    if (ack) ack({ ok: true });
-  });
-
-  socket.on("joinRoom", (data, ack) => {
-    const username = data && tokens.get(data.token);
-    if (!username) return ack({ ok: false, error: "未登录" });
-    const code = String(data.code || "").trim().toUpperCase();
-    const room = rooms.get(code);
-    if (!room) return ack({ ok: false, error: "房间不存在" });
-    if (room.status !== "waiting") return ack({ ok: false, error: "比赛进行中，请稍后再试" });
-    if (room.players.size >= MAX_PLAYERS) {
-      return ack({ ok: false, error: `房间已满 (最多 ${MAX_PLAYERS} 人)` });
-    }
-    removeFromRoom(socket.id);
-    if (!room.ownerId && isAdminRole(getRole(username))) {
-      room.ownerId = socket.id;
-      room.admin = room.admin || username;
-    }
-    room.players.set(socket.id, { username, score: 0 });
-    broadcastRoom(room);
-    ack({ ok: true, room: roomSnapshot(room) });
+    const role = u.role || getRole(username);
+    addToArena(socket, username, role);
+    ack({ ok: true, token, username, bestScore: u.bestScore || 0, role });
   });
 
   socket.on("startMatch", (data, ack) => {
     const username = data && tokens.get(data.token);
-    const room = findRoomBySocket(socket.id);
-    if (!username || !room) return ack && ack({ ok: false, error: "未登录或不在房间" });
+    if (!username) return ack && ack({ ok: false, error: "未登录" });
     if (!isAdminRole(getRole(username))) {
-      return ack && ack({ ok: false, error: "仅管理员可开始比赛，请等待管理员启动" });
+      return ack && ack({ ok: false, error: "仅管理员可开始比赛" });
     }
-    if (room.status === "playing") return ack && ack({ ok: true });
-    if (room.status !== "waiting") return ack && ack({ ok: false, error: "房间状态异常，请退出房间重新加入" });
+    if (arena.status === "playing") return ack && ack({ ok: true });
+    if (arena.status !== "waiting") return ack && ack({ ok: false, error: "比赛正在准备中" });
     const startsAt = Date.now() + COUNTDOWN;
     const endsAt = startsAt + MATCH_DURATION;
-    room.status = "playing";
-    clearLiveScoresTimer(room);
-    for (const p of room.players.values()) p.score = 0;
-    emitToPlayers(room, "matchStart", { startsAt, endsAt });
-    clearMatchTimer(room);
-    room.matchTimer = setTimeout(() => endMatch(room), endsAt - Date.now() + 500);
-    broadcastRoom(room);
+    arena.status = "playing";
+    clearLiveScoresTimer();
+    for (const p of arena.players.values()) p.score = 0;
+    broadcastArena("matchStart", { startsAt, endsAt });
+    broadcastArena("arenaUpdate", arenaSnapshot());
+    clearMatchTimer();
+    arena.matchTimer = setTimeout(endMatch, endsAt - Date.now() + 500);
     if (ack) ack({ ok: true });
   });
 
   socket.on("scoreUpdate", (data) => {
     const username = data && tokens.get(data.token);
-    const room = findRoomBySocket(socket.id);
-    if (!username || !room || room.status !== "playing") return;
-    const p = room.players.get(socket.id);
+    if (!username || arena.status !== "playing") return;
+    const p = arena.players.get(socket.id);
     if (!p) return;
     if (typeof data.score !== "number" || !isFinite(data.score)) return;
     const score = Math.max(0, Math.round(data.score));
     if (score === p.score) return;
     p.score = score;
-    scheduleLiveScores(room);
-  });
-
-  socket.on("leaveRoom", () => {
-    removeFromRoom(socket.id);
+    scheduleLiveScores();
   });
 
   socket.on("setAdmin", (data, ack) => {
@@ -339,7 +257,14 @@ io.on("connection", (socket) => {
       delete users[target].role;
     }
     saveUsers(users);
-    ack({ ok: true, makeAdmin, role: users[target].role || "user" });
+    const updatedRole = users[target].role || "user";
+    for (const p of arena.players.values()) {
+      if (p.username === target) {
+        p.role = updatedRole;
+      }
+    }
+    broadcastArena("arenaUpdate", arenaSnapshot());
+    ack({ ok: true, makeAdmin, role: updatedRole });
   });
 
   socket.on("getAdmins", (data, ack) => {
@@ -363,7 +288,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    removeFromRoom(socket.id);
+    removeFromArena(socket.id);
   });
 });
 
