@@ -158,6 +158,17 @@ const AudioMan = (() => {
     tone(700, ctx.currentTime, 0.05, "sine", 0.25, sfxGain);
   }
 
+  function playBonus() {
+    if (!sfxOn) return;
+    ensure();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    tone(880, t, 0.1, "sine", 0.3, sfxGain);
+    tone(1174.66, t + 0.08, 0.12, "sine", 0.3, sfxGain);
+    tone(1568, t + 0.16, 0.22, "sine", 0.32, sfxGain);
+    noise(5000, 3, 0.2, 0.15, "highpass");
+  }
+
   function playCountdown() {
     if (!sfxOn) return;
     ensure();
@@ -181,6 +192,7 @@ const AudioMan = (() => {
     playSplat,
     playBomb,
     playClick,
+    playBonus,
     playCountdown,
     playGo,
     get musicOn() {

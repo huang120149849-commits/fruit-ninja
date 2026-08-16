@@ -22,7 +22,12 @@ const game = {
   halves: [],
   shockwaves: [],
   slices: [],
+  bonuses: [],
+  floaters: [],
   spawnTimer: 0,
+  bonusTimer: 0,
+  speedFactor: 1,
+  gravityFactor: 1,
   startsAt: 0,
   endsAt: 0,
   lastEmit: 0,
@@ -467,10 +472,11 @@ function getCanvasPos(e) {
 }
 
 function spawnFruit() {
+  const sf = game.speedFactor || 1;
   const isBomb = Math.random() < 0.16;
   const x = 80 + Math.random() * (canvas.width - 160);
-  const vx = (Math.random() - 0.5) * 6;
-  const vy = -(11 + Math.random() * 7);
+  const vx = (Math.random() - 0.5) * 6 * sf;
+  const vy = -(11 + Math.random() * 7) * sf;
   if (isBomb) {
     game.fruits.push({
       type: null,
@@ -559,6 +565,46 @@ function spawnExplosion(fruit) {
   game.shockwaves.push({ x: fruit.x, y: fruit.y, radius: 8, maxRadius: 100, life: 1 });
 }
 
+function spawnBonus() {
+  const emojis = ["💰", "⭐", "🎁", "💎", "🔥", "🎯", "🍀"];
+  const sf = game.speedFactor || 1;
+  game.bonuses.push({
+    emoji: emojis[Math.floor(Math.random() * emojis.length)],
+    x: 100 + Math.random() * (canvas.width - 200),
+    y: canvas.height + 50,
+    vx: (Math.random() - 0.5) * 8 * sf,
+    vy: -(12 + Math.random() * 6) * sf,
+    radius: 34,
+    rotation: 0,
+    rotSpeed: (Math.random() - 0.5) * 0.06,
+    sliced: false,
+  });
+}
+
+function sliceBonus(b) {
+  if (b.sliced) return;
+  b.sliced = true;
+  game.score += 10;
+  el.gameScore.textContent = "得分: " + game.score;
+  const colors = ["#ffd32a", "#ffa502", "#fff200", "#ffed4a"];
+  for (let i = 0; i < 18; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2.5 + Math.random() * 5;
+    game.particles.push({
+      x: b.x,
+      y: b.y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 2,
+      life: 1,
+      r: 2 + Math.random() * 3,
+      color: colors[i % colors.length],
+    });
+  }
+  game.shockwaves.push({ x: b.x, y: b.y, radius: 6, maxRadius: 60, life: 1 });
+  game.floaters.push({ x: b.x, y: b.y - 12, text: "+10", life: 1, vy: -1.4 });
+  AudioMan.playBonus();
+}
+
 function sliceFruit(fruit, sliceAngle) {
   if (fruit.sliced) return;
   fruit.sliced = true;
@@ -599,6 +645,12 @@ function checkSlices() {
     if (fruit.sliced || fruit.y < -60) continue;
     if (segmentCircleHit(px, py, x, y, fruit.x, fruit.y, fruit.radius)) {
       sliceFruit(fruit, sliceAngle);
+    }
+  }
+  for (const b of game.bonuses) {
+    if (b.sliced || b.y < -60) continue;
+    if (segmentCircleHit(px, py, x, y, b.x, b.y, b.radius)) {
+      sliceBonus(b);
     }
   }
 }
@@ -703,6 +755,38 @@ function drawShockwave(w) {
   ctx.restore();
 }
 
+function drawBonus(b) {
+  ctx.save();
+  ctx.translate(b.x, b.y);
+  ctx.rotate(b.rotation);
+  const pulse = 1 + 0.08 * Math.sin(Date.now() / 180);
+  const g = ctx.createRadialGradient(0, 0, 2, 0, 0, b.radius * pulse);
+  g.addColorStop(0, "rgba(255,220,80,0.95)");
+  g.addColorStop(1, "rgba(255,160,20,0.35)");
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(0, 0, b.radius * pulse, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.font = `${b.radius * 1.3}px serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(b.emoji, 0, 2);
+  ctx.restore();
+}
+
+function drawFloater(f) {
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, f.life);
+  ctx.font = "bold 30px 'Microsoft YaHei', sans-serif";
+  ctx.textAlign = "center";
+  ctx.strokeStyle = "rgba(0,0,0,0.6)";
+  ctx.lineWidth = 4;
+  ctx.strokeText(f.text, f.x, f.y);
+  ctx.fillStyle = "#ffd32a";
+  ctx.fillText(f.text, f.x, f.y);
+  ctx.restore();
+}
+
 function resetGame() {
   game.score = 0;
   game.fruits = [];
@@ -710,7 +794,12 @@ function resetGame() {
   game.halves = [];
   game.shockwaves = [];
   game.slices = [];
+  game.bonuses = [];
+  game.floaters = [];
   game.spawnTimer = 0;
+  game.bonusTimer = 0;
+  game.speedFactor = 1;
+  game.gravityFactor = 1;
   game.lastEmit = 0;
   el.gameScore.textContent = "得分: 0";
   el.gameTimer.textContent = "60s";
@@ -751,11 +840,20 @@ function update(dt) {
     }
 
     game.spawnTimer += dt;
+    game.bonusTimer += dt;
     const elapsed = now - game.startsAt;
-    const spawnInterval = Math.max(450, 1100 - elapsed / 200);
+    const matchLen = Math.max(1, game.endsAt - game.startsAt);
+    const progress = Math.min(1, elapsed / matchLen);
+    game.speedFactor = 1 + 1.1 * progress;
+    game.gravityFactor = 1 + 0.9 * progress;
+    const spawnInterval = Math.max(350, 1100 - progress * 700);
     if (game.spawnTimer > spawnInterval) {
       game.spawnTimer = 0;
       spawnFruit();
+    }
+    if (game.bonusTimer > 3500) {
+      game.bonusTimer = 0;
+      if (Math.random() < 0.6) spawnBonus();
     }
 
     if (now - game.lastEmit > 300) {
@@ -764,14 +862,30 @@ function update(dt) {
     }
   }
 
+  const grav = GRAVITY * game.gravityFactor;
+
   for (const fruit of game.fruits) {
     fruit.x += fruit.vx;
     fruit.y += fruit.vy;
-    fruit.vy += GRAVITY;
+    fruit.vy += grav;
     fruit.rotation += fruit.rotSpeed;
   }
 
   game.fruits = game.fruits.filter((f) => f.y <= canvas.height + 80);
+
+  for (const b of game.bonuses) {
+    b.x += b.vx;
+    b.y += b.vy;
+    b.vy += grav;
+    b.rotation += b.rotSpeed;
+  }
+  game.bonuses = game.bonuses.filter((b) => !b.sliced && b.y <= canvas.height + 80);
+
+  for (const f of game.floaters) {
+    f.y += f.vy;
+    f.life -= 0.03;
+  }
+  game.floaters = game.floaters.filter((f) => f.life > 0);
 
   for (const p of game.particles) {
     p.x += p.vx;
@@ -810,6 +924,9 @@ function render() {
   for (const fruit of game.fruits) {
     drawFruit(fruit);
   }
+  for (const b of game.bonuses) {
+    drawBonus(b);
+  }
   for (const h of game.halves) {
     drawHalf(h);
   }
@@ -821,6 +938,9 @@ function render() {
     ctx.arc(p.x, p.y, p.r || 5, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
+  }
+  for (const f of game.floaters) {
+    drawFloater(f);
   }
 }
 
