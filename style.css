@@ -384,6 +384,28 @@ th {
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
 }
 
+#beat-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  opacity: 0;
+  background: radial-gradient(circle at 50% 42%, rgba(255, 220, 130, 0.45), rgba(255, 160, 60, 0.12) 55%, transparent 75%);
+}
+
+.remember {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #666;
+}
+
+.remember input {
+  width: auto;
+  accent-color: #dd2476;
+}
+
 .result-panel {
   width: 460px;
   text-align: center;

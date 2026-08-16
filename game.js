@@ -93,6 +93,8 @@ const el = {
   resultRanking: document.getElementById("result-ranking"),
   backToRoomBtn: document.getElementById("back-to-room-btn"),
   backToLobbyBtn: document.getElementById("back-to-lobby-btn"),
+  beatOverlay: document.getElementById("beat-overlay"),
+  rememberChk: document.getElementById("remember-chk"),
 };
 
 function escapeHtml(s) {
@@ -141,10 +143,28 @@ function completeAuth(res) {
   currentUser = { username: res.username, token: res.token, bestScore: res.bestScore || 0, role: res.role || "user" };
   localStorage.setItem("fn-token", res.token);
   localStorage.setItem("fn-username", res.username);
+  if (el.rememberChk && el.rememberChk.checked) {
+    localStorage.setItem("fn-cred", JSON.stringify({ u: res.username, p: el.authPassword.value }));
+  } else {
+    localStorage.removeItem("fn-cred");
+  }
   renderLobbyHeader();
   renderRoleUI();
   refreshLeaderboard();
   showScreen("lobby");
+}
+
+function prefillCredentials() {
+  if (!el.rememberChk) return;
+  let cred = null;
+  try {
+    cred = JSON.parse(localStorage.getItem("fn-cred") || "null");
+  } catch (e) {}
+  if (cred && cred.u) {
+    el.authUsername.value = cred.u;
+    el.authPassword.value = cred.p || "";
+    el.rememberChk.checked = true;
+  }
 }
 
 function renderLobbyHeader() {
@@ -861,6 +881,7 @@ function update(dt) {
   const now = Date.now();
 
   if (game.phase === "countdown") {
+    AudioMan.setIntensity(0.5);
     const remain = Math.ceil((game.startsAt - now) / 1000);
     el.countdownEl.textContent = remain > 0 ? remain : "GO!";
     if (remain !== game.lastCountdown) {
@@ -883,6 +904,7 @@ function update(dt) {
     if (remaining <= 0) {
       game.phase = "finished";
       game.mouse.active = false;
+      AudioMan.setIntensity(0);
       el.countdownEl.textContent = "等待结果...";
       el.countdownEl.classList.remove("hidden");
       socket.emit("scoreUpdate", { token: currentUser.token, score: game.score });
@@ -894,6 +916,7 @@ function update(dt) {
     const elapsed = now - game.startsAt;
     const matchLen = Math.max(1, game.endsAt - game.startsAt);
     const progress = Math.min(1, elapsed / matchLen);
+    AudioMan.setIntensity(progress);
     game.speedFactor = 1 + 1.1 * progress;
     game.gravityFactor = 1 + 0.9 * progress;
     const spawnInterval = Math.max(350, 1100 - progress * 700);
@@ -963,6 +986,10 @@ function update(dt) {
 
   game.slices = game.slices.filter((s) => s.life > 0);
   for (const s of game.slices) s.life -= 0.05;
+
+  if (game.phase === "idle" || game.phase === "finished") {
+    AudioMan.setIntensity(0);
+  }
 }
 
 function render() {
@@ -1078,6 +1105,18 @@ if (savedToken) {
     if (res.ok) completeAuth(res);
   });
 }
+
+prefillCredentials();
+
+AudioMan.onBeat(() => {
+  if (!el.beatOverlay) return;
+  el.beatOverlay.style.transition = "none";
+  el.beatOverlay.style.opacity = "0.35";
+  requestAnimationFrame(() => {
+    el.beatOverlay.style.transition = "opacity 0.45s ease-out";
+    el.beatOverlay.style.opacity = "0";
+  });
+});
 
 updateAudioButtons();
 requestAnimationFrame(loop);

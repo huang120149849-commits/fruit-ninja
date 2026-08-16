@@ -8,9 +8,10 @@ const AudioMan = (() => {
   let step = 0;
   let musicOn = true;
   let sfxOn = true;
-
-  const BPM = 104;
-  const STEP = 60 / BPM / 4;
+  let bpm = 104;
+  let targetBpm = 104;
+  let intensity = 0;
+  const beatCallbacks = [];
 
   const MELODY = [
     261.63, 0, 329.63, 0, 392.0, 0, 523.25, 0, 659.25, 0, 523.25, 0, 392.0, 0, 523.25, 0,
@@ -80,18 +81,58 @@ const AudioMan = (() => {
     src.stop(t + dur);
   }
 
+  function kick(time) {
+    sweepTone(95, 42, time, 0.12, "sine", 0.55, musicGain);
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuf;
+    const f = ctx.createBiquadFilter();
+    f.type = "lowpass";
+    f.frequency.value = 160;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.22, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.08);
+    src.connect(f).connect(g).connect(musicGain);
+    src.start(time);
+    src.stop(time + 0.1);
+  }
+
+  function fireBeat() {
+    for (const cb of beatCallbacks) {
+      try {
+        cb();
+      } catch (e) {}
+    }
+  }
+
   function scheduler() {
     if (!ctx || !musicOn) return;
+    bpm += (targetBpm - bpm) * 0.08;
+    const stepDur = 60 / bpm / 4;
     while (nextNoteTime < ctx.currentTime + 0.3) {
       const s = step % 64;
       const bar = Math.floor(s / 16);
       const f = MELODY[s];
-      if (f) tone(f, nextNoteTime, STEP * 1.8, "sine", 0.16);
-      if (s % 8 === 0) tone(BASS[bar], nextNoteTime, STEP * 6, "triangle", 0.22);
-      if (s % 8 === 4) tone(BASS[bar], nextNoteTime, STEP * 5, "triangle", 0.16);
-      nextNoteTime += STEP;
+      const vol = 0.16 + intensity * 0.09;
+      if (f) tone(f, nextNoteTime, stepDur * 1.8, "sine", vol);
+      if (s % 8 === 0) tone(BASS[bar], nextNoteTime, stepDur * 6, "triangle", 0.22 + intensity * 0.1);
+      if (s % 8 === 4) tone(BASS[bar], nextNoteTime, stepDur * 5, "triangle", 0.16);
+      if (s % 4 === 0) {
+        kick(nextNoteTime);
+        const delay = Math.max(0, (nextNoteTime - ctx.currentTime) * 1000);
+        setTimeout(fireBeat, delay);
+      }
+      nextNoteTime += stepDur;
       step++;
     }
+  }
+
+  function setIntensity(v) {
+    intensity = Math.max(0, Math.min(1, v || 0));
+    targetBpm = 104 + intensity * 56;
+  }
+
+  function onBeat(cb) {
+    beatCallbacks.push(cb);
   }
 
   function startMusic() {
@@ -195,6 +236,8 @@ const AudioMan = (() => {
     playBonus,
     playCountdown,
     playGo,
+    setIntensity,
+    onBeat,
     get musicOn() {
       return musicOn;
     },
