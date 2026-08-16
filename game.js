@@ -548,6 +548,22 @@ function spawnHalves(fruit, sliceAngle) {
       life: 1,
     });
   }
+  for (let i = 0; i < 3; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const sp = 3 + Math.random() * 4;
+    game.halves.push({
+      x: fruit.x,
+      y: fruit.y,
+      vx: Math.cos(ang) * sp + fruit.vx * 0.3,
+      vy: Math.sin(ang) * sp - 1,
+      rotation: Math.random() * Math.PI * 2,
+      rotSpeed: (Math.random() - 0.5) * 0.3,
+      r: fruit.radius * (0.18 + Math.random() * 0.18),
+      color: data.color,
+      inner: data.inner,
+      life: 1,
+    });
+  }
 }
 
 function spawnExplosion(fruit) {
@@ -584,15 +600,16 @@ function spawnBonus() {
   });
 }
 
-function sliceBonus(b) {
+function sliceBonus(b, sliceAngle) {
   if (b.sliced) return;
   b.sliced = true;
   game.score += 10;
   el.gameScore.textContent = "得分: " + game.score;
+  spawnImageHalves(b, sliceAngle || 0);
   const colors = ["#ffd32a", "#ffa502", "#fff200", "#ffed4a"];
-  for (let i = 0; i < 18; i++) {
+  for (let i = 0; i < 12; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const speed = 2.5 + Math.random() * 5;
+    const speed = 2 + Math.random() * 4;
     game.particles.push({
       x: b.x,
       y: b.y,
@@ -603,9 +620,28 @@ function sliceBonus(b) {
       color: colors[i % colors.length],
     });
   }
-  game.shockwaves.push({ x: b.x, y: b.y, radius: 6, maxRadius: 60, life: 1 });
   game.floaters.push({ x: b.x, y: b.y - 12, text: "+10", life: 1, vy: -1.4 });
   AudioMan.playBonus();
+}
+
+function spawnImageHalves(b, sliceAngle) {
+  const perp = sliceAngle + Math.PI / 2;
+  const jx = Math.cos(perp);
+  const jy = Math.sin(perp);
+  for (let side = -1; side <= 1; side += 2) {
+    game.halves.push({
+      x: b.x + jx * side * 8,
+      y: b.y + jy * side * 8,
+      vx: b.vx * 0.5 + jx * side * (2.5 + Math.random() * 2.5) + (Math.random() - 0.5) * 2,
+      vy: b.vy * 0.5 + (Math.random() - 0.5) * 3,
+      rotation: sliceAngle + (side > 0 ? 0 : Math.PI),
+      rotSpeed: (Math.random() - 0.5) * 0.18,
+      r: b.radius,
+      img: memeImg,
+      side,
+      life: 1,
+    });
+  }
 }
 
 function sliceFruit(fruit, sliceAngle) {
@@ -653,7 +689,7 @@ function checkSlices() {
   for (const b of game.bonuses) {
     if (b.sliced || b.y < -60) continue;
     if (segmentCircleHit(px, py, x, y, b.x, b.y, b.radius)) {
-      sliceBonus(b);
+      sliceBonus(b, sliceAngle);
     }
   }
 }
@@ -734,16 +770,25 @@ function drawHalf(h) {
   ctx.translate(h.x, h.y);
   ctx.rotate(h.rotation);
   ctx.globalAlpha = Math.max(0, h.life);
-  ctx.fillStyle = h.color;
-  ctx.beginPath();
-  ctx.arc(0, 0, h.r, 0, Math.PI);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = h.inner;
-  ctx.beginPath();
-  ctx.arc(0, 0, h.r * 0.8, 0, Math.PI);
-  ctx.closePath();
-  ctx.fill();
+  if (h.img && h.img.complete && h.img.naturalWidth > 0) {
+    const size = h.r * 2;
+    ctx.beginPath();
+    if (h.side > 0) ctx.rect(0, -size / 2, size / 2, size);
+    else ctx.rect(-size / 2, -size / 2, size / 2, size);
+    ctx.clip();
+    ctx.drawImage(h.img, -size / 2, -size / 2, size, size);
+  } else {
+    ctx.fillStyle = h.color;
+    ctx.beginPath();
+    ctx.arc(0, 0, h.r, 0, Math.PI);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = h.inner;
+    ctx.beginPath();
+    ctx.arc(0, 0, h.r * 0.8, 0, Math.PI);
+    ctx.closePath();
+    ctx.fill();
+  }
   ctx.restore();
 }
 
@@ -762,14 +807,11 @@ function drawBonus(b) {
   ctx.save();
   ctx.translate(b.x, b.y);
   ctx.rotate(b.rotation);
-  const pulse = 1 + 0.08 * Math.sin(Date.now() / 180);
-  const g = ctx.createRadialGradient(0, 0, 2, 0, 0, b.radius * pulse + 6);
-  g.addColorStop(0, "rgba(255,220,80,0.95)");
-  g.addColorStop(1, "rgba(255,160,20,0.35)");
-  ctx.fillStyle = g;
+  ctx.strokeStyle = "rgba(255,200,60,0.9)";
+  ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.arc(0, 0, b.radius * pulse + 6, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.arc(0, 0, b.radius + 4, 0, Math.PI * 2);
+  ctx.stroke();
   if (memeImg && memeImg.complete && memeImg.naturalWidth > 0) {
     const size = b.radius * 1.9;
     ctx.drawImage(memeImg, -size / 2, -size / 2, size, size);
