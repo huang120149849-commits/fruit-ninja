@@ -871,9 +871,9 @@ function update(dt) {
     const matchLen = Math.max(1, game.endsAt - game.startsAt);
     const progress = Math.min(1, elapsed / matchLen);
     AudioMan.setIntensity(progress);
-    game.speedFactor = 1 + 1.1 * progress;
-    game.gravityFactor = 1 + 0.9 * progress;
-    const spawnInterval = Math.max(350, 1100 - progress * 700);
+    game.speedFactor = 0.8 + 0.7 * progress;
+    game.gravityFactor = 0.9 + 0.5 * progress;
+    const spawnInterval = Math.max(650, 1500 - progress * 850);
     if (game.spawnTimer > spawnInterval) {
       game.spawnTimer = 0;
       spawnFruit();
