@@ -2,8 +2,8 @@ const socket = io();
 
 const canvas = document.getElementById("game-canvas");
 const ctx = canvas.getContext("2d");
-canvas.width = 900;
-canvas.height = 600;
+canvas.width = 800;
+canvas.height = 1100;
 
 const GRAVITY = 0.22;
 
@@ -453,7 +453,7 @@ function spawnFruit() {
   const isBomb = Math.random() < 0.16;
   const x = 80 + Math.random() * (canvas.width - 160);
   const vx = (Math.random() - 0.5) * 6 * sf;
-  const vy = -(11 + Math.random() * 7) * sf;
+  const vy = -(canvas.height * 0.019 + Math.random() * canvas.height * 0.006) * sf;
   if (isBomb) {
     game.fruits.push({
       type: null,
@@ -566,7 +566,7 @@ function spawnBonus() {
     x: 100 + Math.random() * (canvas.width - 200),
     y: canvas.height + 50,
     vx: (Math.random() - 0.5) * 8 * sf,
-    vy: -(12 + Math.random() * 6) * sf,
+    vy: -(canvas.height * 0.021 + Math.random() * canvas.height * 0.005) * sf,
     radius: 34,
     rotation: 0,
     rotSpeed: (Math.random() - 0.5) * 0.06,
