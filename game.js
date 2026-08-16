@@ -7,6 +7,9 @@ canvas.height = 600;
 
 const GRAVITY = 0.22;
 
+const memeImg = new Image();
+memeImg.src = "assets/meme.png";
+
 const fruitTypes = [
   { name: "watermelon", color: "#2e8b57", inner: "#ff4757", radius: 38, points: 1 },
   { name: "apple", color: "#c0392b", inner: "#fff5e1", radius: 28, points: 1 },
@@ -760,17 +763,22 @@ function drawBonus(b) {
   ctx.translate(b.x, b.y);
   ctx.rotate(b.rotation);
   const pulse = 1 + 0.08 * Math.sin(Date.now() / 180);
-  const g = ctx.createRadialGradient(0, 0, 2, 0, 0, b.radius * pulse);
+  const g = ctx.createRadialGradient(0, 0, 2, 0, 0, b.radius * pulse + 6);
   g.addColorStop(0, "rgba(255,220,80,0.95)");
   g.addColorStop(1, "rgba(255,160,20,0.35)");
   ctx.fillStyle = g;
   ctx.beginPath();
-  ctx.arc(0, 0, b.radius * pulse, 0, Math.PI * 2);
+  ctx.arc(0, 0, b.radius * pulse + 6, 0, Math.PI * 2);
   ctx.fill();
-  ctx.font = `${b.radius * 1.3}px serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(b.emoji, 0, 2);
+  if (memeImg && memeImg.complete && memeImg.naturalWidth > 0) {
+    const size = b.radius * 1.9;
+    ctx.drawImage(memeImg, -size / 2, -size / 2, size, size);
+  } else {
+    ctx.font = `${b.radius * 1.3}px serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(b.emoji, 0, 2);
+  }
   ctx.restore();
 }
 
