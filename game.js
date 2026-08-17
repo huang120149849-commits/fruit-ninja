@@ -80,6 +80,8 @@ const el = {
   adminMsg: document.getElementById("admin-msg"),
   startMatchBtn: document.getElementById("start-match-btn"),
   soloTestBtn: document.getElementById("solo-test-btn"),
+  soloTestRow: document.getElementById("solo-test-row"),
+  testDuration: document.getElementById("test-duration"),
   waitingOverlay: document.getElementById("waiting-overlay"),
   waitingMsg: document.getElementById("waiting-msg"),
   onlineCount: document.getElementById("online-count"),
@@ -189,9 +191,10 @@ function renderArena() {
   el.onlineCount.textContent = "在线玩家: " + (arenaInfo ? arenaInfo.players.length : 0);
   el.waitingOverlay.classList.toggle("hidden", !waiting);
   el.sidebarTitle.textContent = waiting ? "👥 在线玩家" : "📊 实时排名";
-  el.startMatchBtn.classList.toggle("hidden", !(isAdmin() && waiting));
+  el.startMatchBtn.classList.toggle("hidden", !waiting);
   el.startMatchBtn.disabled = !waiting;
-  el.soloTestBtn.classList.toggle("hidden", !(isAdmin() && waiting));
+  el.soloTestRow.classList.toggle("hidden", !(isAdmin() && waiting));
+  el.soloTestBtn.disabled = !waiting;
   if (waiting) {
     el.liveRanks.innerHTML = "";
     if (arenaInfo) {
@@ -265,7 +268,8 @@ el.startMatchBtn.addEventListener("click", () => {
 el.soloTestBtn.addEventListener("click", () => {
   el.soloTestBtn.disabled = true;
   requestGameFullscreen();
-  socket.emit("startSoloTest", { token: currentUser.token }, (res) => {
+  const duration = parseInt(el.testDuration.value, 10) || 15;
+  socket.emit("startSoloTest", { token: currentUser.token, duration }, (res) => {
     if (res && !res.ok) {
       alert(res.error || "无法开始测试");
       el.soloTestBtn.disabled = false;
@@ -313,7 +317,7 @@ socket.on("matchStart", ({ startsAt, endsAt, soloTest }) => {
   AudioMan.playGo();
   resetGame();
   guardHistory();
-  if (soloTest) showToast("🧪 单人测试模式 (15秒, 不计入排行榜)");
+  if (soloTest) showToast(`🧪 单元测试模式 (${Math.round((endsAt - startsAt) / 1000)}秒, 不计入排行榜)`);
   game.phase = "countdown";
   game.startsAt = startsAt;
   game.endsAt = endsAt;

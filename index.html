@@ -74,7 +74,15 @@
             <p id="waiting-msg">⏳ 等待管理员开始比赛...</p>
             <p id="online-count">在线玩家: 0</p>
             <button id="start-match-btn" class="big-btn hidden">🚀 开始比赛 (60秒)</button>
-            <button id="solo-test-btn" class="big-btn ghost hidden">🧪 单人测试 (15秒)</button>
+            <div id="solo-test-row" class="hidden">
+              <select id="test-duration">
+                <option value="10">10 秒</option>
+                <option value="15" selected>15 秒</option>
+                <option value="30">30 秒</option>
+                <option value="60">60 秒</option>
+              </select>
+              <button id="solo-test-btn" class="big-btn ghost">🧪 单元测试</button>
+            </div>
           </div>
           <div id="countdown-el" class="hidden"></div>
           <div id="game-hud">

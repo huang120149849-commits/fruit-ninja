@@ -368,6 +368,25 @@ th {
   padding: 14px 44px;
 }
 
+#solo-test-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+#solo-test-row select {
+  padding: 12px 14px;
+  font-size: 16px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  background: #fff;
+  outline: none;
+}
+
+#solo-test-row .big-btn {
+  padding: 12px 24px;
+}
+
 .game-tools {
   display: flex;
   flex-wrap: wrap;

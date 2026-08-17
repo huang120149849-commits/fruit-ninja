@@ -288,9 +288,6 @@ io.on("connection", (socket) => {
   socket.on("startMatch", async (data, ack) => {
     const username = data && tokens.get(data.token);
     if (!username) return ack && ack({ ok: false, error: "未登录" });
-    if (!isAdminRole(await getRole(username))) {
-      return ack && ack({ ok: false, error: "仅管理员可开始比赛" });
-    }
     if (arena.status === "playing") return ack && ack({ ok: true });
     if (arena.status !== "waiting") return ack && ack({ ok: false, error: "比赛正在准备中" });
     const startsAt = Date.now() + COUNTDOWN;
@@ -309,12 +306,13 @@ io.on("connection", (socket) => {
     const username = data && tokens.get(data.token);
     if (!username) return ack && ack({ ok: false, error: "未登录" });
     if (!isAdminRole(await getRole(username))) {
-      return ack && ack({ ok: false, error: "仅管理员可开始比赛" });
+      return ack && ack({ ok: false, error: "仅管理员可设置单元测试" });
     }
     if (arena.status === "playing") return ack && ack({ ok: false, error: "比赛正在进行中" });
     if (arena.status !== "waiting") return ack && ack({ ok: false, error: "比赛正在准备中" });
+    const duration = Math.min(120, Math.max(5, parseInt(data.duration, 10) || 15)) * 1000;
     const startsAt = Date.now() + COUNTDOWN;
-    const endsAt = startsAt + 15000;
+    const endsAt = startsAt + duration;
     arena.status = "playing";
     arena.soloTest = true;
     clearLiveScoresTimer();
