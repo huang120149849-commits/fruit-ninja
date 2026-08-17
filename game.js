@@ -907,7 +907,7 @@ function update(dt) {
     AudioMan.setIntensity(progress);
     game.speedModTimer -= dt;
     if (game.speedModTimer <= 0) {
-      game.speedModTimer = 2500 + Math.random() * 3500;
+      game.speedModTimer = 10000;
       game.speedModTarget = 0.8 + Math.random() * 0.45;
     }
     game.speedMod += (game.speedModTarget - game.speedMod) * 0.05;
