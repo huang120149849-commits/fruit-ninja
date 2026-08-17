@@ -7,6 +7,9 @@ canvas.height = 1100;
 
 const GRAVITY = 0.22;
 
+const isTouchDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+const fruitScale = isTouchDevice ? 1.25 : 1;
+
 const memeImg = new Image();
 memeImg.src = "assets/meme.png";
 
@@ -484,7 +487,7 @@ function spawnFruit() {
       y: canvas.height + 50,
       vx,
       vy,
-      radius: 44,
+      radius: 44 * fruitScale,
       rotation: Math.random() * Math.PI * 2,
       rotSpeed: (Math.random() - 0.5) * 0.1,
       sliced: false,
@@ -498,7 +501,7 @@ function spawnFruit() {
       y: canvas.height + 50,
       vx,
       vy,
-      radius: type.radius,
+      radius: type.radius * fruitScale,
       rotation: Math.random() * Math.PI * 2,
       rotSpeed: (Math.random() - 0.5) * 0.1,
       sliced: false,
@@ -589,7 +592,7 @@ function spawnBonus() {
     y: canvas.height + 50,
     vx: (Math.random() - 0.5) * 5 * sf,
     vy: -(canvas.height * 0.013 + Math.random() * canvas.height * 0.004) * sf,
-    radius: 48,
+    radius: 48 * fruitScale,
     rotation: 0,
     rotSpeed: (Math.random() - 0.5) * 0.06,
     sliced: false,
