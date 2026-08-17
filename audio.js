@@ -27,7 +27,7 @@ const AudioMan = (() => {
     if (!AC) return;
     ctx = new AC();
     musicGain = ctx.createGain();
-    musicGain.gain.value = musicOn ? 0.55 : 0;
+    musicGain.gain.value = musicOn ? 0.715 : 0;
     musicGain.connect(ctx.destination);
     sfxGain = ctx.createGain();
     sfxGain.gain.value = sfxOn ? 1 : 0;
@@ -152,7 +152,7 @@ const AudioMan = (() => {
   function setMusic(on) {
     musicOn = on;
     ensure();
-    if (musicGain) musicGain.gain.value = on ? 0.55 : 0;
+    if (musicGain) musicGain.gain.value = on ? 0.715 : 0;
     if (on) startMusic();
     else stopMusic();
   }
