@@ -7,7 +7,7 @@ canvas.height = 1100;
 
 const GRAVITY = 0.22;
 
-const speedMul = 0.7;
+const speedMul = 0.875;
 
 const isTouchDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
 const fruitScale = isTouchDevice ? 1.5625 : 1;
@@ -480,7 +480,7 @@ function spawnFruit() {
   const isBomb = Math.random() < 0.16;
   const x = 80 + Math.random() * (canvas.width - 160);
   const vx = (Math.random() - 0.5) * 3.5 * sf * speedMul;
-  const vy = -(canvas.height * 0.011 * speedMul + Math.random() * canvas.height * 0.004 * speedMul) * sf;
+  const vy = -(canvas.height * 0.019 * speedMul + Math.random() * canvas.height * 0.006 * speedMul) * sf;
   if (isBomb) {
     game.fruits.push({
       type: null,
@@ -593,7 +593,7 @@ function spawnBonus() {
     x: 100 + Math.random() * (canvas.width - 200),
     y: canvas.height + 50,
     vx: (Math.random() - 0.5) * 5 * sf * speedMul,
-    vy: -(canvas.height * 0.013 * speedMul + Math.random() * canvas.height * 0.004 * speedMul) * sf,
+    vy: -(canvas.height * 0.021 * speedMul + Math.random() * canvas.height * 0.005 * speedMul) * sf,
     radius: 48 * fruitScale,
     rotation: 0,
     rotSpeed: (Math.random() - 0.5) * 0.06,
