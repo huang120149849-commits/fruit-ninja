@@ -196,7 +196,7 @@ function renderArena() {
   el.onlineCount.textContent = "在线玩家: " + (arenaInfo ? arenaInfo.players.length : 0);
   el.waitingOverlay.classList.toggle("hidden", !waiting);
   el.sidebarTitle.textContent = waiting ? "👥 在线玩家" : "📊 实时排名";
-  el.startMatchBtn.classList.toggle("hidden", !waiting);
+  el.startMatchBtn.classList.toggle("hidden", !(isAdmin() && waiting));
   el.startMatchBtn.disabled = !waiting;
   el.soloTestRow.classList.toggle("hidden", !(isAdmin() && waiting));
   el.soloTestBtn.disabled = !waiting;

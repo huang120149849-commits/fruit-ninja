@@ -288,6 +288,9 @@ io.on("connection", (socket) => {
   socket.on("startMatch", async (data, ack) => {
     const username = data && tokens.get(data.token);
     if (!username) return ack && ack({ ok: false, error: "未登录" });
+    if (!isAdminRole(await getRole(username))) {
+      return ack && ack({ ok: false, error: "仅管理员可开始比赛" });
+    }
     if (arena.status === "playing") return ack && ack({ ok: true });
     if (arena.status !== "waiting") return ack && ack({ ok: false, error: "比赛正在准备中" });
     const startsAt = Date.now() + COUNTDOWN;
