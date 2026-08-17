@@ -213,7 +213,10 @@ async function endMatch() {
   const ranking = [...arena.players.values()]
     .map((p) => ({ username: p.username, score: p.score }))
     .sort((a, b) => b.score - a.score);
+  const soloTest = !!arena.soloTest;
+  arena.soloTest = false;
   for (const r of ranking) {
+    if (soloTest) break;
     if (r.score <= 0) continue;
     const u = await store.getUser(r.username);
     if (u && r.score > (u.bestScore || 0)) {
@@ -296,6 +299,27 @@ io.on("connection", (socket) => {
     clearLiveScoresTimer();
     for (const p of arena.players.values()) p.score = 0;
     broadcastArena("matchStart", { startsAt, endsAt });
+    broadcastArena("arenaUpdate", arenaSnapshot());
+    clearMatchTimer();
+    arena.matchTimer = setTimeout(endMatch, endsAt - Date.now() + 500);
+    if (ack) ack({ ok: true });
+  });
+
+  socket.on("startSoloTest", async (data, ack) => {
+    const username = data && tokens.get(data.token);
+    if (!username) return ack && ack({ ok: false, error: "未登录" });
+    if (!isAdminRole(await getRole(username))) {
+      return ack && ack({ ok: false, error: "仅管理员可开始比赛" });
+    }
+    if (arena.status === "playing") return ack && ack({ ok: false, error: "比赛正在进行中" });
+    if (arena.status !== "waiting") return ack && ack({ ok: false, error: "比赛正在准备中" });
+    const startsAt = Date.now() + COUNTDOWN;
+    const endsAt = startsAt + 15000;
+    arena.status = "playing";
+    arena.soloTest = true;
+    clearLiveScoresTimer();
+    for (const p of arena.players.values()) p.score = 0;
+    broadcastArena("matchStart", { startsAt, endsAt, soloTest: true });
     broadcastArena("arenaUpdate", arenaSnapshot());
     clearMatchTimer();
     arena.matchTimer = setTimeout(endMatch, endsAt - Date.now() + 500);

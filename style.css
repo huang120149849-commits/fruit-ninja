@@ -4,12 +4,19 @@
   box-sizing: border-box;
 }
 
+html {
+  overscroll-behavior: none;
+}
+
 body {
   height: 100vh;
   background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);
   font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   overflow: hidden;
+  overscroll-behavior: none;
 }
 
 #app {
@@ -279,6 +286,8 @@ th {
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
   max-width: 900px;
   width: 100%;
+  touch-action: none;
+  overscroll-behavior: none;
 }
 
 #game-canvas {

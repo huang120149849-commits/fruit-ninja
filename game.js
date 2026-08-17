@@ -11,10 +11,10 @@ const memeImg = new Image();
 memeImg.src = "assets/meme.png";
 
 const fruitTypes = [
-  { name: "watermelon", color: "#2e8b57", inner: "#ff4757", radius: 38, points: 1 },
-  { name: "apple", color: "#c0392b", inner: "#fff5e1", radius: 28, points: 1 },
-  { name: "orange", color: "#e67e22", inner: "#fdcb6e", radius: 26, points: 1 },
-  { name: "banana", color: "#f1c40f", inner: "#fdf3d0", radius: 30, points: 2 },
+  { name: "watermelon", color: "#2e8b57", inner: "#ff4757", radius: 54, points: 1 },
+  { name: "apple", color: "#c0392b", inner: "#fff5e1", radius: 42, points: 1 },
+  { name: "orange", color: "#e67e22", inner: "#fdcb6e", radius: 40, points: 1 },
+  { name: "banana", color: "#f1c40f", inner: "#fdf3d0", radius: 46, points: 2 },
 ];
 
 const game = {
@@ -79,6 +79,7 @@ const el = {
   adminList: document.getElementById("admin-list"),
   adminMsg: document.getElementById("admin-msg"),
   startMatchBtn: document.getElementById("start-match-btn"),
+  soloTestBtn: document.getElementById("solo-test-btn"),
   waitingOverlay: document.getElementById("waiting-overlay"),
   waitingMsg: document.getElementById("waiting-msg"),
   onlineCount: document.getElementById("online-count"),
@@ -190,6 +191,7 @@ function renderArena() {
   el.sidebarTitle.textContent = waiting ? "👥 在线玩家" : "📊 实时排名";
   el.startMatchBtn.classList.toggle("hidden", !(isAdmin() && waiting));
   el.startMatchBtn.disabled = !waiting;
+  el.soloTestBtn.classList.toggle("hidden", !(isAdmin() && waiting));
   if (waiting) {
     el.liveRanks.innerHTML = "";
     if (arenaInfo) {
@@ -251,6 +253,7 @@ function refreshLeaderboard() {
 
 el.startMatchBtn.addEventListener("click", () => {
   el.startMatchBtn.disabled = true;
+  requestGameFullscreen();
   socket.emit("startMatch", { token: currentUser.token }, (res) => {
     if (res && !res.ok) {
       alert(res.error || "无法开始比赛");
@@ -259,8 +262,20 @@ el.startMatchBtn.addEventListener("click", () => {
   });
 });
 
+el.soloTestBtn.addEventListener("click", () => {
+  el.soloTestBtn.disabled = true;
+  requestGameFullscreen();
+  socket.emit("startSoloTest", { token: currentUser.token }, (res) => {
+    if (res && !res.ok) {
+      alert(res.error || "无法开始测试");
+      el.soloTestBtn.disabled = false;
+    }
+  });
+});
+
 el.leaderboardBtn.addEventListener("click", () => {
   refreshLeaderboard();
+  exitGameFullscreen();
   showScreen("lobby");
 });
 
@@ -274,7 +289,6 @@ el.resultBackBtn.addEventListener("click", () => {
   showScreen("game");
   renderArena();
 });
-
 el.logoutBtn.addEventListener("click", logout);
 el.gameLogoutBtn.addEventListener("click", logout);
 
@@ -283,6 +297,7 @@ function logout() {
   arenaInfo = null;
   localStorage.removeItem("fn-token");
   localStorage.removeItem("fn-username");
+  exitGameFullscreen();
   el.authForm.reset();
   setAuthMode("login");
   showScreen("auth");
@@ -294,9 +309,10 @@ socket.on("arenaUpdate", (snap) => {
   if (screens.lobby.classList.contains("active") && isAdmin()) refreshAdminList();
 });
 
-socket.on("matchStart", ({ startsAt, endsAt }) => {
+socket.on("matchStart", ({ startsAt, endsAt, soloTest }) => {
   AudioMan.playGo();
   resetGame();
+  if (soloTest) showToast("🧪 单人测试模式 (15秒, 不计入排行榜)");
   game.phase = "countdown";
   game.startsAt = startsAt;
   game.endsAt = endsAt;
@@ -319,6 +335,7 @@ socket.on("matchEnd", ({ ranking }) => {
   AudioMan.setIntensity(0);
   renderResults(ranking);
   showScreen("result");
+  exitGameFullscreen();
 });
 
 let reconnecting = false;
@@ -452,8 +469,8 @@ function spawnFruit() {
   const sf = game.speedFactor || 1;
   const isBomb = Math.random() < 0.16;
   const x = 80 + Math.random() * (canvas.width - 160);
-  const vx = (Math.random() - 0.5) * 6 * sf;
-  const vy = -(canvas.height * 0.019 + Math.random() * canvas.height * 0.006) * sf;
+  const vx = (Math.random() - 0.5) * 3.5 * sf;
+  const vy = -(canvas.height * 0.011 + Math.random() * canvas.height * 0.004) * sf;
   if (isBomb) {
     game.fruits.push({
       type: null,
@@ -462,7 +479,7 @@ function spawnFruit() {
       y: canvas.height + 50,
       vx,
       vy,
-      radius: 30,
+      radius: 44,
       rotation: Math.random() * Math.PI * 2,
       rotSpeed: (Math.random() - 0.5) * 0.1,
       sliced: false,
@@ -565,9 +582,9 @@ function spawnBonus() {
     emoji: emojis[Math.floor(Math.random() * emojis.length)],
     x: 100 + Math.random() * (canvas.width - 200),
     y: canvas.height + 50,
-    vx: (Math.random() - 0.5) * 8 * sf,
-    vy: -(canvas.height * 0.021 + Math.random() * canvas.height * 0.005) * sf,
-    radius: 34,
+    vx: (Math.random() - 0.5) * 5 * sf,
+    vy: -(canvas.height * 0.013 + Math.random() * canvas.height * 0.004) * sf,
+    radius: 48,
     rotation: 0,
     rotSpeed: (Math.random() - 0.5) * 0.06,
     sliced: false,
@@ -845,6 +862,7 @@ function update(dt) {
     }
     if (now >= game.startsAt) {
       game.phase = "playing";
+      hideToast();
       el.countdownEl.classList.add("hidden");
       game.lastEmit = now;
       socket.emit("scoreUpdate", { token: currentUser.token, score: 0 });
@@ -871,9 +889,9 @@ function update(dt) {
     const matchLen = Math.max(1, game.endsAt - game.startsAt);
     const progress = Math.min(1, elapsed / matchLen);
     AudioMan.setIntensity(progress);
-    game.speedFactor = 0.8 + 0.7 * progress;
-    game.gravityFactor = 0.9 + 0.5 * progress;
-    const spawnInterval = Math.max(650, 1500 - progress * 850);
+    game.speedFactor = 0.6 + 0.4 * progress;
+    game.gravityFactor = 0.75 + 0.25 * progress;
+    const spawnInterval = Math.max(900, 1900 - progress * 800);
     if (game.spawnTimer > spawnInterval) {
       game.spawnTimer = 0;
       spawnFruit();
@@ -984,6 +1002,40 @@ function loop(ts) {
   requestAnimationFrame(loop);
 }
 
+function requestGameFullscreen() {
+  const root = document.documentElement;
+  if (!document.fullscreenEnabled && !document.webkitFullscreenEnabled) return;
+  if (document.fullscreenElement || document.webkitFullscreenElement) return;
+  const req = root.requestFullscreen || root.webkitRequestFullscreen;
+  if (req) {
+    try { req.call(root); } catch (e) {}
+  }
+}
+
+function exitGameFullscreen() {
+  const doc = document;
+  if (doc.fullscreenElement || doc.webkitFullscreenElement) {
+    const ex = doc.exitFullscreen || doc.webkitExitFullscreen;
+    if (ex) { try { ex.call(doc); } catch (e) {} }
+  }
+}
+
+document.addEventListener("touchmove", (e) => {
+  if (game.phase === "playing" || game.phase === "countdown") e.preventDefault();
+}, { passive: false });
+
+document.addEventListener("touchstart", (e) => {
+  if (game.phase === "playing" || game.phase === "countdown") e.preventDefault();
+}, { passive: false });
+
+document.addEventListener("gesturestart", (e) => e.preventDefault());
+document.addEventListener("gesturechange", (e) => e.preventDefault());
+document.addEventListener("gestureend", (e) => e.preventDefault());
+document.addEventListener("dblclick", (e) => e.preventDefault());
+document.addEventListener("contextmenu", (e) => {
+  if (game.phase === "playing" || game.phase === "countdown") e.preventDefault();
+});
+
 canvas.addEventListener("mousedown", (e) => {
   if (game.phase !== "playing") return;
   const pos = getCanvasPos(e);
@@ -1018,7 +1070,8 @@ canvas.addEventListener("mouseleave", () => {
 
 canvas.addEventListener("touchstart", (e) => {
   e.preventDefault();
-  if (game.phase !== "playing") return;
+  if (game.phase !== "playing" && game.phase !== "countdown") return;
+  requestGameFullscreen();
   const t = e.changedTouches[0];
   const pos = getCanvasPos({ clientX: t.clientX, clientY: t.clientY });
   game.mouse.x = pos.x;
