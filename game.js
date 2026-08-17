@@ -36,6 +36,9 @@ const game = {
   bonusTimer: 0,
   speedFactor: 1,
   gravityFactor: 1,
+  speedMod: 1,
+  speedModTarget: 1,
+  speedModTimer: 0,
   startsAt: 0,
   endsAt: 0,
   lastEmit: 0,
@@ -851,6 +854,9 @@ function resetGame() {
   game.bonusTimer = 0;
   game.speedFactor = 1;
   game.gravityFactor = 1;
+  game.speedMod = 1;
+  game.speedModTarget = 1;
+  game.speedModTimer = 0;
   game.lastEmit = 0;
   el.gameScore.textContent = "得分: 0";
   el.gameTimer.textContent = "60s";
@@ -899,8 +905,14 @@ function update(dt) {
     const matchLen = Math.max(1, game.endsAt - game.startsAt);
     const progress = Math.min(1, elapsed / matchLen);
     AudioMan.setIntensity(progress);
-    game.speedFactor = 0.6 + 0.4 * progress;
-    game.gravityFactor = 0.525 + 0.175 * progress;
+    game.speedModTimer -= dt;
+    if (game.speedModTimer <= 0) {
+      game.speedModTimer = 2500 + Math.random() * 3500;
+      game.speedModTarget = 0.8 + Math.random() * 0.45;
+    }
+    game.speedMod += (game.speedModTarget - game.speedMod) * 0.05;
+    game.speedFactor = (0.6 + 0.4 * progress) * game.speedMod;
+    game.gravityFactor = (0.525 + 0.175 * progress) * game.speedMod;
     const spawnInterval = Math.max(900, 1900 - progress * 800);
     if (game.spawnTimer > spawnInterval) {
       game.spawnTimer = 0;
