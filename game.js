@@ -8,7 +8,7 @@ canvas.height = 1100;
 const GRAVITY = 0.22;
 
 const isTouchDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
-const fruitScale = isTouchDevice ? 1.25 : 1;
+const fruitScale = isTouchDevice ? 1.5625 : 1;
 
 const memeImg = new Image();
 memeImg.src = "assets/meme.png";
