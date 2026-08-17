@@ -312,6 +312,7 @@ socket.on("arenaUpdate", (snap) => {
 socket.on("matchStart", ({ startsAt, endsAt, soloTest }) => {
   AudioMan.playGo();
   resetGame();
+  guardHistory();
   if (soloTest) showToast("🧪 单人测试模式 (15秒, 不计入排行榜)");
   game.phase = "countdown";
   game.startsAt = startsAt;
@@ -1034,6 +1035,16 @@ document.addEventListener("gestureend", (e) => e.preventDefault());
 document.addEventListener("dblclick", (e) => e.preventDefault());
 document.addEventListener("contextmenu", (e) => {
   if (game.phase === "playing" || game.phase === "countdown") e.preventDefault();
+});
+
+function guardHistory() {
+  try { history.pushState({ fnGuard: true }, ""); } catch (e) {}
+}
+
+window.addEventListener("popstate", () => {
+  if (game.phase === "playing" || game.phase === "countdown") {
+    try { history.pushState({ fnGuard: true }, ""); } catch (e) {}
+  }
 });
 
 canvas.addEventListener("mousedown", (e) => {
