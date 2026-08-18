@@ -7,7 +7,7 @@ canvas.height = 1100;
 
 const GRAVITY = 0.22;
 
-const speedMul = 0.875;
+const speedMul = 1;
 
 const isTouchDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
 const fruitScale = isTouchDevice ? 1.5625 : 1;
@@ -911,8 +911,8 @@ function update(dt) {
       game.speedModTarget = 0.8 + Math.random() * 0.45;
     }
     game.speedMod += (game.speedModTarget - game.speedMod) * 0.05;
-    game.speedFactor = (0.6 + 0.4 * progress) * game.speedMod;
-    game.gravityFactor = (0.525 + 0.175 * progress) * game.speedMod;
+    game.speedFactor = (1.0 + 0.4 * progress) * game.speedMod;
+    game.gravityFactor = (0.8 + 0.2 * progress) * game.speedMod;
     const spawnInterval = Math.max(900, 1900 - progress * 800);
     if (game.spawnTimer > spawnInterval) {
       game.spawnTimer = 0;
