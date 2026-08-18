@@ -883,12 +883,14 @@ function update(dt) {
       game.speedModTarget = 0.7;
     } else if (elapsed < 40000) {
       game.speedModTarget = 1.1;
-    } else {
+    } else if (elapsed < 50000) {
       game.speedModTimer -= dt;
       if (game.speedModTimer <= 0) {
         game.speedModTimer = 4000;
         game.speedModTarget = 1.1 + Math.random() * 0.4;
       }
+    } else {
+      game.speedModTarget = 0.8;
     }
     game.speedMod += (game.speedModTarget - game.speedMod) * 0.05;
     game.speedFactor = (1.0 + 0.4 * progress) * game.speedMod;
