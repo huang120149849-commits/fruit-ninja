@@ -33,7 +33,9 @@ function loadUsers() {
 }
 
 function saveUsers(users) {
-  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+  const tmp = USERS_FILE + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify(users, null, 2));
+  fs.renameSync(tmp, USERS_FILE);
 }
 
 function hashPassword(password, salt) {
