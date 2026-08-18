@@ -16,10 +16,20 @@ const memeImg = new Image();
 memeImg.src = "assets/meme.png";
 
 const fruitTypes = [
-  { name: "watermelon", color: "#2e8b57", inner: "#ff4757", radius: 54, points: 1 },
-  { name: "apple", color: "#c0392b", inner: "#fff5e1", radius: 42, points: 1 },
-  { name: "orange", color: "#e67e22", inner: "#fdcb6e", radius: 40, points: 1 },
-  { name: "banana", color: "#f1c40f", inner: "#fdf3d0", radius: 46, points: 2 },
+  { name: "watermelon", emoji: "🍉", color: "#2e8b57", inner: "#ff4757", radius: 60, points: 1 },
+  { name: "apple", emoji: "🍎", color: "#c0392b", inner: "#fff5e1", radius: 48, points: 1 },
+  { name: "greenapple", emoji: "🍏", color: "#27ae60", inner: "#e8f8e0", radius: 48, points: 1 },
+  { name: "orange", emoji: "🍊", color: "#e67e22", inner: "#fdcb6e", radius: 46, points: 1 },
+  { name: "lemon", emoji: "🍋", color: "#f1c40f", inner: "#fdf3d0", radius: 46, points: 1 },
+  { name: "banana", emoji: "🍌", color: "#f1c40f", inner: "#fdf3d0", radius: 52, points: 2 },
+  { name: "grapes", emoji: "🍇", color: "#8e44ad", inner: "#d2b4de", radius: 50, points: 1 },
+  { name: "strawberry", emoji: "🍓", color: "#e74c3c", inner: "#f5b7b1", radius: 44, points: 2 },
+  { name: "kiwi", emoji: "🥝", color: "#6f9e4f", inner: "#c8e6a0", radius: 44, points: 1 },
+  { name: "peach", emoji: "🍑", color: "#ff9ff3", inner: "#ffeaa7", radius: 48, points: 2 },
+  { name: "pear", emoji: "🍐", color: "#a3d15a", inner: "#f0f7d4", radius: 48, points: 1 },
+  { name: "cherries", emoji: "🍒", color: "#c0392b", inner: "#ffd9d9", radius: 46, points: 2 },
+  { name: "pineapple", emoji: "🍍", color: "#d68910", inner: "#fdebd0", radius: 50, points: 1 },
+  { name: "mango", emoji: "🥭", color: "#f39c12", inner: "#ffe0b2", radius: 48, points: 1 },
 ];
 
 const game = {
@@ -702,53 +712,13 @@ function drawFruit(fruit) {
   ctx.save();
   ctx.translate(fruit.x, fruit.y);
   ctx.rotate(fruit.rotation);
+  ctx.font = `${Math.round(fruit.radius * 2)}px serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
   if (fruit.bomb) {
-    const g = ctx.createRadialGradient(-6, -6, 4, 0, 0, fruit.radius);
-    g.addColorStop(0, "#636e72");
-    g.addColorStop(1, "#2d3436");
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(0, 0, fruit.radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "#fdcb6e";
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(0, -fruit.radius);
-    ctx.lineTo(6, -fruit.radius - 12);
-    ctx.stroke();
-    ctx.fillStyle = "#ff7675";
-    ctx.beginPath();
-    ctx.arc(6, -fruit.radius - 16, 4, 0, Math.PI * 2);
-    ctx.fill();
-  } else if (fruit.type.name === "banana") {
-    ctx.fillStyle = fruit.type.color;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, fruit.radius, fruit.radius * 0.45, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "#e1b12c";
-    ctx.lineWidth = 3;
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.ellipse(0, 4, fruit.radius * 0.4, fruit.radius * 0.18, 0, 0, Math.PI * 2);
-    ctx.fillStyle = "#fdf3d0";
-    ctx.fill();
+    ctx.fillText("💣", 0, 2);
   } else {
-    const g = ctx.createRadialGradient(-8, -8, 5, 0, 0, fruit.radius);
-    g.addColorStop(0, fruit.type.inner);
-    g.addColorStop(1, fruit.type.color);
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(0, 0, fruit.radius, 0, Math.PI * 2);
-    ctx.fill();
-    if (fruit.type.name === "watermelon") {
-      ctx.strokeStyle = "#1e6b3a";
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.arc(0, 0, fruit.radius, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    ctx.fillStyle = "#4caf50";
-    ctx.fillRect(-3, -fruit.radius - 8, 6, 10);
+    ctx.fillText(fruit.type.emoji, 0, 2);
   }
   ctx.restore();
 }
@@ -905,10 +875,20 @@ function update(dt) {
     const matchLen = Math.max(1, game.endsAt - game.startsAt);
     const progress = Math.min(1, elapsed / matchLen);
     AudioMan.setIntensity(progress);
-    game.speedModTimer -= dt;
-    if (game.speedModTimer <= 0) {
-      game.speedModTimer = 10000;
-      game.speedModTarget = 0.8 + Math.random() * 0.45;
+    if (elapsed < 10000) {
+      game.speedModTarget = 0.7;
+    } else if (elapsed < 20000) {
+      game.speedModTarget = 1.0;
+    } else if (elapsed < 30000) {
+      game.speedModTarget = 0.7;
+    } else if (elapsed < 40000) {
+      game.speedModTarget = 1.1;
+    } else {
+      game.speedModTimer -= dt;
+      if (game.speedModTimer <= 0) {
+        game.speedModTimer = 4000;
+        game.speedModTarget = 1.1 + Math.random() * 0.4;
+      }
     }
     game.speedMod += (game.speedModTarget - game.speedMod) * 0.05;
     game.speedFactor = (1.0 + 0.4 * progress) * game.speedMod;
