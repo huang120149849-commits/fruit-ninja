@@ -121,6 +121,25 @@ const store = {
 
 const tokens = new Map();
 
+if (process.env.ADMIN_RESET_PASSWORD) {
+  (async () => {
+    try {
+      const existing = await store.getUser("admin");
+      const salt = crypto.randomBytes(16).toString("hex");
+      await store.saveUser("admin", {
+        salt,
+        hash: hashPassword(process.env.ADMIN_RESET_PASSWORD, salt),
+        bestScore: existing ? existing.bestScore || 0 : 0,
+        role: "superadmin",
+        createdAt: existing ? existing.createdAt : Date.now(),
+      });
+      console.log("[reset] admin password has been reset");
+    } catch (e) {
+      console.error("[reset] failed:", e.message);
+    }
+  })();
+}
+
 function makeToken() {
   return crypto.randomBytes(24).toString("hex");
 }
