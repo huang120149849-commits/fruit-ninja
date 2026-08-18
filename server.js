@@ -43,18 +43,28 @@ function hashPassword(password, salt) {
 }
 
 async function sbJson(pathname, options) {
-  const res = await fetch(`${SUPABASE_URL}${pathname}`, {
-    method: options.method || "GET",
-    ...(options.body ? { body: JSON.stringify(options.body) } : {}),
-    headers: {
-      apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${SUPABASE_KEY}`,
-      "Content-Type": "application/json",
-      Prefer: "resolution=merge-duplicates",
-      ...(options.headers || {}),
-    },
-  });
+  let res;
+  try {
+    res = await fetch(`${SUPABASE_URL}${pathname}`, {
+      method: options.method || "GET",
+      ...(options.body ? { body: JSON.stringify(options.body) } : {}),
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates",
+        ...(options.headers || {}),
+      },
+    });
+  } catch (e) {
+    console.error(`[supabase] fetch failed for ${pathname}: ${e.message}`);
+    throw e;
+  }
   if (!res.ok) {
+    const bodyText = await res.text().catch(() => "");
+    console.error(
+      `[supabase] ${options.method || "GET"} ${pathname} -> ${res.status} ${res.statusText} ${bodyText.slice(0, 300)}`
+    );
     throw new Error(`Supabase request failed: ${res.status} ${res.statusText}`);
   }
   const text = await res.text();
