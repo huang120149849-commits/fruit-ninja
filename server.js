@@ -42,7 +42,7 @@ function hashPassword(password, salt) {
   return crypto.scryptSync(String(password), salt, 64).toString("hex");
 }
 
-async function sbJson(pathname, options) {
+async function sbJson(pathname, options = {}) {
   let res;
   try {
     res = await fetch(`${SUPABASE_URL}${pathname}`, {
