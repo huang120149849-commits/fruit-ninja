@@ -10,7 +10,7 @@ const MATCH_DURATION = 60000;
 const COUNTDOWN = 3000;
 const SUPER_ADMIN = (process.env.SUPER_ADMIN || "admin").trim();
 
-const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
+const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/+$/, "").replace(/\/rest\/v1$/i, "");
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || "";
 const USE_SUPABASE = !!(SUPABASE_URL && SUPABASE_KEY);
 
