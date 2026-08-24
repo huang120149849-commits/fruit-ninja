@@ -603,6 +603,7 @@ function spawnBonus() {
   const sf = game.speedFactor || 1;
   game.bonuses.push({
     emoji: emojis[Math.floor(Math.random() * emojis.length)],
+    img: Math.random() < 0.5 ? memeImg : null,
     x: 100 + Math.random() * (canvas.width - 200),
     y: canvas.height + 50,
     vx: (Math.random() - 0.5) * 5 * sf * speedMul,
@@ -786,10 +787,15 @@ function drawBonus(b) {
   ctx.beginPath();
   ctx.arc(0, 0, b.radius + 4, 0, Math.PI * 2);
   ctx.stroke();
-  ctx.font = `${Math.round(b.radius * 1.9)}px serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(b.emoji, 0, 2);
+  if (b.img && b.img.complete && b.img.naturalWidth > 0) {
+    const size = b.radius * 1.9;
+    ctx.drawImage(b.img, -size / 2, -size / 2, size, size);
+  } else {
+    ctx.font = `${Math.round(b.radius * 1.9)}px serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(b.emoji, 0, 2);
+  }
   ctx.restore();
 }
 
