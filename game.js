@@ -786,15 +786,10 @@ function drawBonus(b) {
   ctx.beginPath();
   ctx.arc(0, 0, b.radius + 4, 0, Math.PI * 2);
   ctx.stroke();
-  if (memeImg && memeImg.complete && memeImg.naturalWidth > 0) {
-    const size = b.radius * 1.9;
-    ctx.drawImage(memeImg, -size / 2, -size / 2, size, size);
-  } else {
-    ctx.font = `${b.radius * 1.3}px serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(b.emoji, 0, 2);
-  }
+  ctx.font = `${Math.round(b.radius * 1.9)}px serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(b.emoji, 0, 2);
   ctx.restore();
 }
 
