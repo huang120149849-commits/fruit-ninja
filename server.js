@@ -33,7 +33,7 @@ function loadUsers() {
 }
 
 function saveUsers(users) {
-  const tmp = USERS_FILE + ".tmp";
+  const tmp = `${USERS_FILE}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(users, null, 2));
   fs.renameSync(tmp, USERS_FILE);
 }
