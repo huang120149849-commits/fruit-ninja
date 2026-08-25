@@ -82,7 +82,16 @@
           <div id="waiting-overlay">
             <h2>🍉 小松切水果</h2>
             <p id="waiting-msg">⏳ 等待管理员开始比赛...</p>
+            <p id="tournament-status" class="hidden"></p>
+            <div id="tournament-admin" class="hidden">
+              <div class="join-row">
+                <input id="rank-count-input" type="number" min="1" max="50" placeholder="本局得名次人数">
+                <button id="set-rank-count-btn" class="big-btn">设置</button>
+              </div>
+              <p class="hint">设置后点下方"开始比赛"</p>
+            </div>
             <p id="online-count">在线玩家: 0</p>
+            <button id="start-tournament-btn" class="big-btn ghost hidden">🏆 开启3局晋级赛</button>
             <button id="start-match-btn" class="big-btn hidden">🚀 开始比赛 (60秒)</button>
             <div id="solo-test-row" class="hidden">
               <select id="test-duration">
@@ -115,8 +124,14 @@
 
     <div id="result-screen" class="screen">
       <div class="panel result-panel">
-        <h2>🏁 比赛结束</h2>
+        <h2 id="result-title">🏁 比赛结束</h2>
         <ul id="result-ranking"></ul>
+        <div id="choice-panel" class="hidden">
+          <p id="choice-msg"></p>
+          <p id="choice-countdown"></p>
+          <button id="keep-rank-btn" class="big-btn">🏅 保留名次</button>
+          <button id="advance-btn" class="big-btn ghost">🚀 晋级下一局</button>
+        </div>
         <div class="room-btns">
           <button id="result-back-btn" class="big-btn">返回等待</button>
         </div>

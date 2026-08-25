@@ -59,6 +59,10 @@ const game = {
 let currentUser = null;
 let arenaInfo = null;
 let liveScores = [];
+let tournament = { active: false, round: 0, rankCounts: {} };
+let choiceTimer = null;
+let choiceDeadline = 0;
+let choiceResolved = false;
 
 const screens = {
   auth: document.getElementById("auth-screen"),
@@ -100,6 +104,17 @@ const el = {
   soloTestBtn: document.getElementById("solo-test-btn"),
   soloTestRow: document.getElementById("solo-test-row"),
   testDuration: document.getElementById("test-duration"),
+  startTournamentBtn: document.getElementById("start-tournament-btn"),
+  tournamentStatus: document.getElementById("tournament-status"),
+  tournamentAdmin: document.getElementById("tournament-admin"),
+  rankCountInput: document.getElementById("rank-count-input"),
+  setRankCountBtn: document.getElementById("set-rank-count-btn"),
+  resultTitle: document.getElementById("result-title"),
+  choicePanel: document.getElementById("choice-panel"),
+  choiceMsg: document.getElementById("choice-msg"),
+  choiceCountdown: document.getElementById("choice-countdown"),
+  keepRankBtn: document.getElementById("keep-rank-btn"),
+  advanceBtn: document.getElementById("advance-btn"),
   waitingOverlay: document.getElementById("waiting-overlay"),
   waitingMsg: document.getElementById("waiting-msg"),
   onlineCount: document.getElementById("online-count"),
@@ -213,13 +228,26 @@ function renderArena() {
   el.startMatchBtn.disabled = !waiting;
   el.soloTestRow.classList.toggle("hidden", !(isAdmin() && waiting));
   el.soloTestBtn.disabled = !waiting;
+  if (arenaInfo && arenaInfo.tournament && waiting) {
+    el.startTournamentBtn.classList.add("hidden");
+    el.tournamentStatus.classList.remove("hidden");
+    const rankCounts = arenaInfo.rankCounts || {};
+    el.tournamentStatus.textContent =
+      `🏆 3局晋级赛: 第 ${arenaInfo.round || 1}/3 局` +
+      (rankCounts[arenaInfo.round] ? ` | 本局取前 ${rankCounts[arenaInfo.round]} 名` : " | 未设置得名次人数");
+    el.tournamentAdmin.classList.toggle("hidden", !isAdmin());
+  } else {
+    el.startTournamentBtn.classList.toggle("hidden", !(isAdmin() && waiting && (!arenaInfo || !arenaInfo.tournament)));
+    el.tournamentStatus.classList.add("hidden");
+    el.tournamentAdmin.classList.add("hidden");
+  }
   if (waiting) {
     el.liveRanks.innerHTML = "";
     if (arenaInfo) {
       arenaInfo.players.forEach((p) => {
         const li = document.createElement("li");
         const badge = p.role === "superadmin" ? "🛡️" : p.role === "admin" ? "🛡️" : "👤";
-        li.textContent = badge + " " + p.username + (p.username === currentUser.username ? " (我)" : "");
+        li.textContent = badge + " " + p.username + (p.kept ? " 🏅已保留名次" : "") + (p.username === currentUser.username ? " (我)" : "");
         if (p.username === currentUser.username) li.classList.add("me");
         el.liveRanks.appendChild(li);
       });
@@ -295,6 +323,27 @@ el.soloTestBtn.addEventListener("click", () => {
   });
 });
 
+el.startTournamentBtn.addEventListener("click", () => {
+  el.startTournamentBtn.disabled = true;
+  socket.emit("startTournament", { token: currentUser.token }, (res) => {
+    if (res && !res.ok) {
+      alert(res.error || "无法开启晋级赛");
+      el.startTournamentBtn.disabled = false;
+    }
+  });
+});
+
+el.setRankCountBtn.addEventListener("click", () => {
+  const count = parseInt(el.rankCountInput.value, 10);
+  if (!count || count < 1 || count > 50) {
+    alert("请输入 1-50 之间的得名次人数");
+    return;
+  }
+  socket.emit("setRankCount", { token: currentUser.token, round: tournament.round || 1, count }, (res) => {
+    if (res && !res.ok) alert(res.error || "设置失败");
+  });
+});
+
 el.leaderboardBtn.addEventListener("click", () => {
   refreshLeaderboard();
   exitGameFullscreen();
@@ -327,6 +376,9 @@ function logout() {
 
 socket.on("arenaUpdate", (snap) => {
   arenaInfo = snap;
+  if (snap.tournament !== undefined) {
+    tournament = { active: !!snap.tournament, round: snap.round || 0, rankCounts: snap.rankCounts || {} };
+  }
   if (screens.game.classList.contains("active")) renderArena();
   if (screens.lobby.classList.contains("active") && isAdmin()) refreshAdminList();
 });
@@ -357,6 +409,149 @@ socket.on("matchEnd", ({ ranking }) => {
   game.mouse.active = false;
   AudioMan.setIntensity(0);
   renderResults(ranking);
+  el.resultTitle.textContent = tournament.active ? `🏁 第${tournament.round}局结束` : "🏁 比赛结束";
+  el.choicePanel.classList.add("hidden");
+  showScreen("result");
+  exitGameFullscreen();
+});
+
+socket.on("tournamentStart", () => {
+  tournament = { active: true, round: 1, rankCounts: {} };
+  showToast("🏆 3局晋级赛已开启, 由管理员设置每局得名次人数");
+  renderArena();
+});
+
+socket.on("roundConfig", ({ round, count, rankCounts }) => {
+  tournament.round = round;
+  tournament.rankCounts = rankCounts || {};
+  showToast(`📋 第${round}局得名次人数已设置: ${count} 名`);
+  renderArena();
+});
+
+socket.on("roundResult", ({ round, ranking, ranked, deadline }) => {
+  tournament.round = round;
+  choiceDeadline = deadline;
+  choiceResolved = false;
+  renderResults(ranking);
+  el.resultTitle.textContent = `🏅 第${round}局 得名次名单`;
+  const iAmRanked = ranked.includes(currentUser.username);
+  if (iAmRanked) {
+    el.choicePanel.classList.remove("hidden");
+    el.choiceMsg.textContent = "🎉 恭喜进入得名次名单! 请在倒计时内选择:";
+    el.keepRankBtn.disabled = false;
+    el.advanceBtn.disabled = false;
+    startChoiceCountdown();
+  } else {
+    el.choicePanel.classList.add("hidden");
+    el.choiceMsg.textContent = "本轮未得名次, 请等待结果...";
+    el.choicePanel.classList.remove("hidden");
+    el.choiceCountdown.textContent = "";
+  }
+  showScreen("result");
+  exitGameFullscreen();
+});
+
+function startChoiceCountdown() {
+  stopChoiceCountdown();
+  el.choiceCountdown.textContent = "";
+  choiceTimer = setInterval(() => {
+    const remain = Math.max(0, Math.ceil((choiceDeadline - Date.now()) / 1000));
+    if (choiceResolved) {
+      stopChoiceCountdown();
+      return;
+    }
+    if (remain <= 0) {
+      stopChoiceCountdown();
+      el.choiceMsg.textContent = "⏰ 未做出选择, 已自动晋级下一局";
+      el.choiceCountdown.textContent = "";
+      el.keepRankBtn.disabled = true;
+      el.advanceBtn.disabled = true;
+      return;
+    }
+    el.choiceCountdown.textContent = `⏳ ${remain} 秒后自动晋级...`;
+  }, 200);
+}
+
+function stopChoiceCountdown() {
+  if (choiceTimer) {
+    clearInterval(choiceTimer);
+    choiceTimer = null;
+  }
+}
+
+el.keepRankBtn.addEventListener("click", () => {
+  choiceResolved = true;
+  stopChoiceCountdown();
+  el.keepRankBtn.disabled = true;
+  el.advanceBtn.disabled = true;
+  el.choiceMsg.textContent = "🏅 已选择保留名次!";
+  el.choiceCountdown.textContent = "";
+  socket.emit("chooseRound", { token: currentUser.token, action: "keep" });
+});
+
+el.advanceBtn.addEventListener("click", () => {
+  choiceResolved = true;
+  stopChoiceCountdown();
+  el.keepRankBtn.disabled = true;
+  el.advanceBtn.disabled = true;
+  el.choiceMsg.textContent = "🚀 已选择晋级下一局!";
+  el.choiceCountdown.textContent = "";
+  socket.emit("chooseRound", { token: currentUser.token, action: "advance" });
+});
+
+socket.on("roundChoices", ({ round, kept, advanced, finalRanks }) => {
+  stopChoiceCountdown();
+  el.choicePanel.classList.add("hidden");
+  el.resultTitle.textContent = `📋 第${round}局 晋级结果`;
+  el.resultRanking.innerHTML = "";
+  if (advanced.length > 0) {
+    const li1 = document.createElement("li");
+    li1.innerHTML = `<span>🚀 晋级下一局:</span><b>${advanced.length}人</b>`;
+    el.resultRanking.appendChild(li1);
+    advanced.forEach((u) => {
+      const li = document.createElement("li");
+      li.innerHTML = `<span>  ${escapeHtml(u)}</span>`;
+      el.resultRanking.appendChild(li);
+    });
+  }
+  if (kept.length > 0) {
+    const li2 = document.createElement("li");
+    li2.innerHTML = `<span>🏅 保留名次:</span><b>${kept.length}人</b>`;
+    el.resultRanking.appendChild(li2);
+    kept.forEach((u) => {
+      const li = document.createElement("li");
+      li.innerHTML = `<span>  ${escapeHtml(u)}</span>`;
+      el.resultRanking.appendChild(li);
+    });
+  }
+});
+
+socket.on("roundReady", ({ round }) => {
+  tournament.round = round;
+  showScreen("game");
+  renderArena();
+  showToast(`📣 第${round}局准备就绪, 等待管理员设置并开始比赛`);
+});
+
+socket.on("tournamentEnd", ({ ranking, finalRanks }) => {
+  tournament = { active: false, round: 0, rankCounts: {} };
+  stopChoiceCountdown();
+  el.choicePanel.classList.add("hidden");
+  el.resultTitle.textContent = "🏆 晋级赛结束 · 最终名次";
+  el.resultRanking.innerHTML = "";
+  if (finalRanks.length === 0) {
+    const li = document.createElement("li");
+    li.textContent = "无得名次人员";
+    el.resultRanking.appendChild(li);
+  } else {
+    finalRanks.forEach((f, i) => {
+      const li = document.createElement("li");
+      const medal = i < 3 ? ["🥇", "🥈", "🥉"][i] : i + 1 + ".";
+      li.innerHTML = `<span>${medal} ${escapeHtml(f.username)}</span><b>第${f.round}局 第${f.pos}名</b>`;
+      if (f.username === currentUser.username) li.classList.add("me");
+      el.resultRanking.appendChild(li);
+    });
+  }
   showScreen("result");
   exitGameFullscreen();
 });

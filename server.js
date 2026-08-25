@@ -172,12 +172,28 @@ const arena = {
   liveScoresTimer: null,
   liveScoresPending: false,
   lastLiveScoresAt: 0,
+  tournament: false,
+  round: 0,
+  rankCounts: {},
+  roundMatch: 0,
+  choice: null,
+  choiceTimer: null,
+  finalRanks: [],
+  kept: new Set(),
 };
 
 function arenaSnapshot() {
   return {
     status: arena.status,
-    players: [...arena.players.values()].map((p) => ({ username: p.username, score: p.score, role: p.role })),
+    tournament: arena.tournament,
+    round: arena.round,
+    rankCounts: arena.rankCounts,
+    players: [...arena.players.values()].map((p) => ({
+      username: p.username,
+      score: p.score,
+      role: p.role,
+      kept: !!p.kept,
+    })),
   };
 }
 
@@ -211,6 +227,42 @@ function clearMatchTimer() {
   }
 }
 
+function clearChoiceTimer() {
+  if (arena.choiceTimer) {
+    clearTimeout(arena.choiceTimer);
+    arena.choiceTimer = null;
+  }
+}
+
+function finalizeRoundChoices() {
+  if (!arena.choice) return;
+  clearChoiceTimer();
+  const c = arena.choice;
+  arena.choice = null;
+  const advanced = [];
+  const kept = [];
+  for (const u of c.ranked) {
+    if (c.choices[u] === "keep") kept.push(u);
+    else advanced.push(u);
+  }
+  const posOf = {};
+  c.ranking.forEach((r, i) => {
+    posOf[r.username] = i + 1;
+  });
+  for (const u of kept) {
+    arena.finalRanks.push({ username: u, round: c.round, pos: posOf[u] || 0 });
+    arena.kept.add(u);
+  }
+  for (const p of arena.players.values()) {
+    if (arena.kept.has(p.username)) p.kept = true;
+  }
+  broadcastArena("roundChoices", { round: c.round, kept, advanced, finalRanks: [...arena.finalRanks] });
+  if (arena.tournament && c.round < 3) {
+    arena.round = c.round + 1;
+    broadcastArena("roundReady", { round: arena.round, rankCounts: arena.rankCounts });
+  }
+}
+
 function clearLiveScoresTimer() {
   if (arena.liveScoresTimer) {
     clearTimeout(arena.liveScoresTimer);
@@ -241,7 +293,10 @@ async function endMatch() {
   clearLiveScoresTimer();
   if (arena.status !== "playing") return;
   arena.status = "waiting";
+  const roundMatch = arena.roundMatch;
+  arena.roundMatch = 0;
   const ranking = [...arena.players.values()]
+    .filter((p) => !arena.kept.has(p.username))
     .map((p) => ({ username: p.username, score: p.score }))
     .sort((a, b) => b.score - a.score);
   const soloTest = !!arena.soloTest;
@@ -257,6 +312,37 @@ async function endMatch() {
   for (const p of arena.players.values()) p.score = 0;
   broadcastArena("matchEnd", { ranking });
   broadcastArena("arenaUpdate", arenaSnapshot());
+  if (arena.tournament && roundMatch >= 1) {
+    if (roundMatch < 3) {
+      const count = arena.rankCounts[roundMatch] || 0;
+      const rankedList = ranking.filter((r) => r.score > 0).slice(0, count);
+      const ranked = rankedList.map((r) => r.username);
+      const deadline = Date.now() + 9000;
+      arena.choice = { round: roundMatch, ranked, ranking: rankedList, deadline, choices: {} };
+      clearChoiceTimer();
+      broadcastArena("roundResult", { round: roundMatch, ranking: rankedList, deadline, ranked });
+      if (ranked.length === 0) {
+        arena.choiceTimer = setTimeout(finalizeRoundChoices, 200);
+      } else {
+        arena.choiceTimer = setTimeout(finalizeRoundChoices, 9000);
+      }
+    } else {
+      const count = arena.rankCounts[roundMatch] || 0;
+      const finalRanked = ranking.filter((r) => r.score > 0).slice(0, count);
+      let rk = arena.finalRanks.length;
+      for (const r of finalRanked) {
+        rk++;
+        arena.finalRanks.push({ username: r.username, round: roundMatch, pos: rk });
+      }
+      const finalRanks = [...arena.finalRanks];
+      broadcastArena("tournamentEnd", { ranking, finalRanks });
+      arena.tournament = false;
+      arena.round = 0;
+      arena.rankCounts = {};
+      arena.kept = new Set();
+      for (const p of arena.players.values()) p.kept = false;
+    }
+  }
 }
 
 io.on("connection", (socket) => {
@@ -322,8 +408,13 @@ io.on("connection", (socket) => {
     if (!isAdminRole(await getRole(username))) {
       return ack && ack({ ok: false, error: "仅管理员可开始比赛" });
     }
+    if (arena.choice) return ack && ack({ ok: false, error: "晋级选择中,请等待" });
+    if (arena.tournament && !arena.rankCounts[arena.round]) {
+      return ack && ack({ ok: false, error: `请先设置第${arena.round}局得名次人数` });
+    }
     if (arena.status === "playing") return ack && ack({ ok: true });
     if (arena.status !== "waiting") return ack && ack({ ok: false, error: "比赛正在准备中" });
+    if (arena.tournament) arena.roundMatch = arena.round;
     const startsAt = Date.now() + COUNTDOWN;
     const endsAt = startsAt + MATCH_DURATION;
     arena.status = "playing";
@@ -334,6 +425,51 @@ io.on("connection", (socket) => {
     clearMatchTimer();
     arena.matchTimer = setTimeout(endMatch, endsAt - Date.now() + 500);
     if (ack) ack({ ok: true });
+  });
+
+  socket.on("startTournament", async (data, ack) => {
+    const username = data && tokens.get(data.token);
+    if (!username) return ack && ack({ ok: false, error: "未登录" });
+    if (!isAdminRole(await getRole(username))) {
+      return ack && ack({ ok: false, error: "仅管理员可开启晋级赛" });
+    }
+    if (arena.status !== "waiting") return ack && ack({ ok: false, error: "比赛进行中" });
+    arena.tournament = true;
+    arena.round = 1;
+    arena.rankCounts = {};
+    arena.roundMatch = 0;
+    arena.finalRanks = [];
+    arena.kept = new Set();
+    arena.choice = null;
+    clearChoiceTimer();
+    for (const p of arena.players.values()) p.kept = false;
+    broadcastArena("tournamentStart", { round: 1, rankCounts: {} });
+    broadcastArena("arenaUpdate", arenaSnapshot());
+    if (ack) ack({ ok: true, round: 1 });
+  });
+
+  socket.on("setRankCount", async (data, ack) => {
+    const username = data && tokens.get(data.token);
+    if (!username) return ack && ack({ ok: false, error: "未登录" });
+    if (!isAdminRole(await getRole(username))) {
+      return ack && ack({ ok: false, error: "仅管理员可设置" });
+    }
+    const round = parseInt(data.round, 10);
+    const count = parseInt(data.count, 10);
+    if (round < 1 || round > 3) return ack && ack({ ok: false, error: "局数无效" });
+    if (!count || count < 1 || count > 50) return ack && ack({ ok: false, error: "人数需在 1-50 之间" });
+    arena.rankCounts[round] = count;
+    broadcastArena("roundConfig", { round, count, rankCounts: arena.rankCounts });
+    broadcastArena("arenaUpdate", arenaSnapshot());
+    if (ack) ack({ ok: true, round, count });
+  });
+
+  socket.on("chooseRound", (data) => {
+    const username = data && tokens.get(data.token);
+    if (!username || !arena.choice) return;
+    if (!arena.choice.ranked.includes(username)) return;
+    arena.choice.choices[username] = data.action === "keep" ? "keep" : "advance";
+    if (arena.choice.ranked.every((u) => arena.choice.choices[u])) finalizeRoundChoices();
   });
 
   socket.on("startSoloTest", async (data, ack) => {
