@@ -471,7 +471,7 @@ socket.on("roundResult", ({ round, ranking, ranked, deadline }) => {
 
 function startChoiceCountdown() {
   stopChoiceCountdown();
-  el.choiceCountdown.textContent = "";
+  el.choiceCountdown.textContent = "9";
   choiceTimer = setInterval(() => {
     const remain = Math.max(0, Math.ceil((choiceDeadline - Date.now()) / 1000));
     if (choiceResolved) {
@@ -481,12 +481,12 @@ function startChoiceCountdown() {
     if (remain <= 0) {
       stopChoiceCountdown();
       el.choiceMsg.textContent = "⏰ 未做出选择, 已自动晋级下一局";
-      el.choiceCountdown.textContent = "";
+      el.choiceCountdown.textContent = "0";
       el.keepRankBtn.disabled = true;
       el.advanceBtn.disabled = true;
       return;
     }
-    el.choiceCountdown.textContent = `⏳ ${remain} 秒后自动晋级...`;
+    el.choiceCountdown.textContent = String(remain);
   }, 200);
 }
 
@@ -769,15 +769,30 @@ function getCanvasPos(e) {
 function spawnFruit() {
   const sf = game.speedFactor || 1;
   const isBomb = Math.random() < 0.16;
-  const x = 80 + Math.random() * (canvas.width - 160);
-  const vx = (Math.random() - 0.5) * 3.5 * sf * speedMul;
-  const vy = -(canvas.height * 0.019 * speedMul + Math.random() * canvas.height * 0.006 * speedMul) * sf;
+  const dirRoll = Math.random();
+  let x, y, vx, vy;
+  if (dirRoll < 0.2) {
+    x = -50;
+    y = canvas.height * (0.15 + Math.random() * 0.5);
+    vx = (2.5 + Math.random() * 3.5) * sf * speedMul;
+    vy = -(canvas.height * (0.008 + Math.random() * 0.006)) * sf;
+  } else if (dirRoll < 0.4) {
+    x = canvas.width + 50;
+    y = canvas.height * (0.15 + Math.random() * 0.5);
+    vx = -(2.5 + Math.random() * 3.5) * sf * speedMul;
+    vy = -(canvas.height * (0.008 + Math.random() * 0.006)) * sf;
+  } else {
+    x = 80 + Math.random() * (canvas.width - 160);
+    y = canvas.height + 50;
+    vx = (Math.random() - 0.5) * 3.5 * sf * speedMul;
+    vy = -(canvas.height * 0.019 * speedMul + Math.random() * canvas.height * 0.006 * speedMul) * sf;
+  }
   if (isBomb) {
     game.fruits.push({
       type: null,
       bomb: true,
       x,
-      y: canvas.height + 50,
+      y,
       vx,
       vy,
       radius: 44 * fruitScale,
@@ -791,7 +806,7 @@ function spawnFruit() {
       type,
       bomb: false,
       x,
-      y: canvas.height + 50,
+      y,
       vx,
       vy,
       radius: type.radius * fruitScale,
@@ -879,13 +894,31 @@ function spawnExplosion(fruit) {
 function spawnBonus() {
   const emojis = ["💰", "⭐", "🎁", "💎", "🔥", "🎯", "🍀"];
   const sf = game.speedFactor || 1;
+  const dirRoll = Math.random();
+  let x, y, vx, vy;
+  if (dirRoll < 0.3) {
+    x = -50;
+    y = canvas.height * (0.15 + Math.random() * 0.5);
+    vx = (2.5 + Math.random() * 3) * sf * speedMul;
+    vy = -(canvas.height * (0.01 + Math.random() * 0.005)) * sf;
+  } else if (dirRoll < 0.6) {
+    x = canvas.width + 50;
+    y = canvas.height * (0.15 + Math.random() * 0.5);
+    vx = -(2.5 + Math.random() * 3) * sf * speedMul;
+    vy = -(canvas.height * (0.01 + Math.random() * 0.005)) * sf;
+  } else {
+    x = 100 + Math.random() * (canvas.width - 200);
+    y = canvas.height + 50;
+    vx = (Math.random() - 0.5) * 5 * sf * speedMul;
+    vy = -(canvas.height * 0.021 * speedMul + Math.random() * canvas.height * 0.005 * speedMul) * sf;
+  }
   game.bonuses.push({
     emoji: emojis[Math.floor(Math.random() * emojis.length)],
     img: Math.random() < 0.5 ? memeImg : null,
-    x: 100 + Math.random() * (canvas.width - 200),
-    y: canvas.height + 50,
-    vx: (Math.random() - 0.5) * 5 * sf * speedMul,
-    vy: -(canvas.height * 0.021 * speedMul + Math.random() * canvas.height * 0.005 * speedMul) * sf,
+    x,
+    y,
+    vx,
+    vy,
     radius: 48 * fruitScale,
     rotation: 0,
     rotSpeed: (Math.random() - 0.5) * 0.06,
@@ -1199,7 +1232,7 @@ function update(dt) {
     fruit.rotation += fruit.rotSpeed;
   }
 
-  game.fruits = game.fruits.filter((f) => f.y <= canvas.height + 80);
+  game.fruits = game.fruits.filter((f) => f.y <= canvas.height + 80 && f.x > -200 && f.x < canvas.width + 200);
 
   for (const b of game.bonuses) {
     b.x += b.vx;
@@ -1207,7 +1240,7 @@ function update(dt) {
     b.vy += grav;
     b.rotation += b.rotSpeed;
   }
-  game.bonuses = game.bonuses.filter((b) => !b.sliced && b.y <= canvas.height + 80);
+  game.bonuses = game.bonuses.filter((b) => !b.sliced && b.y <= canvas.height + 80 && b.x > -200 && b.x < canvas.width + 200);
 
   for (const f of game.floaters) {
     f.y += f.vy;

@@ -97,6 +97,19 @@ body {
   color: #dd2476;
 }
 
+.tournament-hint {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #f5d78e;
+  color: #b8860b;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.tournament-hint b {
+  color: #dd2476;
+}
+
 .tab {
   flex: 1;
   padding: 10px;
@@ -445,9 +458,17 @@ th {
 }
 
 #choice-countdown {
-  font-size: 22px;
+  font-size: 52px;
   font-weight: bold;
   color: #dd2476;
+  text-align: center;
+  line-height: 1.1;
+  text-shadow: 0 2px 8px rgba(221, 36, 118, 0.3);
+}
+
+#choice-msg {
+  font-size: 15px;
+  line-height: 1.5;
 }
 
 .game-tools {
