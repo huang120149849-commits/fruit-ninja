@@ -410,6 +410,9 @@ io.on("connection", (socket) => {
   socket.on("login", async ({ username, password }, ack) => {
     username = String(username || "").trim();
     password = String(password || "");
+    if (username !== SUPER_ADMIN && !/^\d{3}$/.test(username)) {
+      return ack({ ok: false, error: "请使用3位工号登录" });
+    }
     const u = await store.getUser(username);
     if (!u || hashPassword(password, u.salt) !== u.hash) {
       return ack({ ok: false, error: "用户名或密码错误" });
