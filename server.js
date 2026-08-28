@@ -180,6 +180,7 @@ const arena = {
   choiceTimer: null,
   finalRanks: [],
   kept: new Set(),
+  tournamentLog: [],
 };
 
 function arenaSnapshot() {
@@ -193,6 +194,7 @@ function arenaSnapshot() {
       score: p.score,
       role: p.role,
       kept: !!p.kept,
+      active: p.active !== false,
     })),
   };
 }
@@ -205,7 +207,12 @@ function broadcastArena(event, payload) {
 
 function addToArena(socket, username, role) {
   if (!arena.players.has(socket.id)) {
-    arena.players.set(socket.id, { username, score: 0, role });
+    arena.players.set(socket.id, {
+      username,
+      score: 0,
+      role,
+      active: arena.tournament ? arena.round === 1 : true,
+    });
     broadcastArena("arenaUpdate", arenaSnapshot());
   } else {
     const p = arena.players.get(socket.id);
@@ -253,8 +260,14 @@ function finalizeRoundChoices() {
     arena.finalRanks.push({ username: u, round: c.round, pos: posOf[u] || 0 });
     arena.kept.add(u);
   }
+  const logEntry = arena.tournamentLog.find((e) => e.round === c.round);
+  if (logEntry) {
+    logEntry.kept = [...kept];
+    logEntry.advanced = [...advanced];
+  }
   for (const p of arena.players.values()) {
     if (arena.kept.has(p.username)) p.kept = true;
+    if (!advanced.includes(p.username)) p.active = false;
   }
   broadcastArena("roundChoices", { round: c.round, kept, advanced, finalRanks: [...arena.finalRanks] });
   if (arena.tournament && c.round < 3) {
@@ -296,7 +309,7 @@ async function endMatch() {
   const roundMatch = arena.roundMatch;
   arena.roundMatch = 0;
   const ranking = [...arena.players.values()]
-    .filter((p) => !arena.kept.has(p.username))
+    .filter((p) => p.active !== false)
     .map((p) => ({ username: p.username, score: p.score }))
     .sort((a, b) => b.score - a.score);
   const soloTest = !!arena.soloTest;
@@ -320,6 +333,14 @@ async function endMatch() {
       const deadline = Date.now() + 9000;
       arena.choice = { round: roundMatch, ranked, ranking: rankedList, deadline, choices: {} };
       clearChoiceTimer();
+      arena.tournamentLog.push({
+        round: roundMatch,
+        rankCount: count,
+        ranking: ranking.map((r) => ({ username: r.username, score: r.score })),
+        ranked: rankedList.map((r) => ({ username: r.username, score: r.score })),
+        kept: [],
+        advanced: [],
+      });
       broadcastArena("roundResult", { round: roundMatch, ranking: rankedList, deadline, ranked });
       if (ranked.length === 0) {
         arena.choiceTimer = setTimeout(finalizeRoundChoices, 200);
@@ -334,13 +355,25 @@ async function endMatch() {
         rk++;
         arena.finalRanks.push({ username: r.username, round: roundMatch, pos: rk });
       }
+      arena.tournamentLog.push({
+        round: roundMatch,
+        rankCount: count,
+        ranking: ranking.map((r) => ({ username: r.username, score: r.score })),
+        ranked: finalRanked.map((r) => ({ username: r.username, score: r.score })),
+        kept: finalRanked.map((r) => r.username),
+        advanced: [],
+      });
       const finalRanks = [...arena.finalRanks];
-      broadcastArena("tournamentEnd", { ranking, finalRanks });
+      const log = [...arena.tournamentLog];
+      broadcastArena("tournamentEnd", { ranking, finalRanks, log });
       arena.tournament = false;
       arena.round = 0;
       arena.rankCounts = {};
       arena.kept = new Set();
-      for (const p of arena.players.values()) p.kept = false;
+      for (const p of arena.players.values()) {
+        p.kept = false;
+        p.active = true;
+      }
     }
   }
 }
@@ -441,8 +474,12 @@ io.on("connection", (socket) => {
     arena.finalRanks = [];
     arena.kept = new Set();
     arena.choice = null;
+    arena.tournamentLog = [];
     clearChoiceTimer();
-    for (const p of arena.players.values()) p.kept = false;
+    for (const p of arena.players.values()) {
+      p.kept = false;
+      p.active = true;
+    }
     broadcastArena("tournamentStart", { round: 1, rankCounts: {} });
     broadcastArena("arenaUpdate", arenaSnapshot());
     if (ack) ack({ ok: true, round: 1 });
@@ -470,6 +507,16 @@ io.on("connection", (socket) => {
     if (!arena.choice.ranked.includes(username)) return;
     arena.choice.choices[username] = data.action === "keep" ? "keep" : "advance";
     if (arena.choice.ranked.every((u) => arena.choice.choices[u])) finalizeRoundChoices();
+  });
+
+  socket.on("getTournamentLog", async (data, ack) => {
+    const username = data && tokens.get(data.token);
+    if (!username) return ack && ack({ ok: false, error: "未登录" });
+    if (!isAdminRole(await getRole(username))) {
+      return ack && ack({ ok: false, error: "仅管理员可查看" });
+    }
+    if (!ack) return;
+    ack({ ok: true, log: [...arena.tournamentLog], finalRanks: [...arena.finalRanks] });
   });
 
   socket.on("startSoloTest", async (data, ack) => {

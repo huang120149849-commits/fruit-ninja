@@ -115,6 +115,7 @@ const el = {
   choiceCountdown: document.getElementById("choice-countdown"),
   keepRankBtn: document.getElementById("keep-rank-btn"),
   advanceBtn: document.getElementById("advance-btn"),
+  exportLogBtn: document.getElementById("export-log-btn"),
   waitingOverlay: document.getElementById("waiting-overlay"),
   waitingMsg: document.getElementById("waiting-msg"),
   onlineCount: document.getElementById("online-count"),
@@ -247,7 +248,8 @@ function renderArena() {
       arenaInfo.players.forEach((p) => {
         const li = document.createElement("li");
         const badge = p.role === "superadmin" ? "🛡️" : p.role === "admin" ? "🛡️" : "👤";
-        li.textContent = badge + " " + p.username + (p.kept ? " 🏅已保留名次" : "") + (p.username === currentUser.username ? " (我)" : "");
+        const outMark = p.active === false ? " ❌已淘汰" : p.kept ? " 🏅已保留名次" : "";
+        li.textContent = badge + " " + p.username + outMark + (p.username === currentUser.username ? " (我)" : "");
         if (p.username === currentUser.username) li.classList.add("me");
         el.liveRanks.appendChild(li);
       });
@@ -384,6 +386,10 @@ socket.on("arenaUpdate", (snap) => {
 });
 
 socket.on("matchStart", ({ startsAt, endsAt, soloTest }) => {
+  if (tournament.active && !isMeActive()) {
+    showToast("❌ 你已被淘汰, 本轮无参赛资格");
+    return;
+  }
   AudioMan.playGo();
   resetGame();
   guardHistory();
@@ -397,6 +403,12 @@ socket.on("matchStart", ({ startsAt, endsAt, soloTest }) => {
   el.countdownEl.textContent = "3";
   showScreen("game");
 });
+
+function isMeActive() {
+  if (!arenaInfo || !arenaInfo.players) return true;
+  const me = arenaInfo.players.find((p) => p.username === currentUser.username);
+  return me ? me.active !== false : true;
+}
 
 
 socket.on("liveScores", ({ scores }) => {
@@ -533,7 +545,7 @@ socket.on("roundReady", ({ round }) => {
   showToast(`📣 第${round}局准备就绪, 等待管理员设置并开始比赛`);
 });
 
-socket.on("tournamentEnd", ({ ranking, finalRanks }) => {
+socket.on("tournamentEnd", ({ ranking, finalRanks, log }) => {
   tournament = { active: false, round: 0, rankCounts: {} };
   stopChoiceCountdown();
   el.choicePanel.classList.add("hidden");
@@ -552,9 +564,61 @@ socket.on("tournamentEnd", ({ ranking, finalRanks }) => {
       el.resultRanking.appendChild(li);
     });
   }
+  lastTournamentLog = log || null;
+  el.exportLogBtn.classList.toggle("hidden", !isAdmin());
   showScreen("result");
   exitGameFullscreen();
 });
+
+let lastTournamentLog = null;
+
+el.exportLogBtn.addEventListener("click", () => {
+  if (!lastTournamentLog || lastTournamentLog.length === 0) {
+    socket.emit("getTournamentLog", { token: currentUser.token }, (res) => {
+      if (res && res.ok) {
+        lastTournamentLog = res.log || [];
+        downloadTournamentLog(lastTournamentLog, res.finalRanks || []);
+      } else {
+        alert(res && res.error ? res.error : "无可用比赛记录");
+      }
+    });
+    return;
+  }
+  downloadTournamentLog(lastTournamentLog, []);
+});
+
+function downloadTournamentLog(log, finalRanks) {
+  const lines = [];
+  lines.push("=== 水果忍者 3局晋级赛 比赛记录 ===");
+  lines.push("导出时间: " + new Date().toLocaleString("zh-CN"));
+  lines.push("");
+  log.forEach((e) => {
+    lines.push(`--- 第${e.round}局 (得名次人数: ${e.rankCount}) ---`);
+    lines.push("完整排名:");
+    e.ranking.forEach((r, i) => {
+      lines.push(`  ${i + 1}. ${r.username} - ${r.score}分`);
+    });
+    lines.push(`得名次名单: ${e.ranked.map((r) => r.username).join(", ") || "无"}`);
+    if (e.advanced && e.advanced.length) lines.push(`晋级下一局: ${e.advanced.join(", ")}`);
+    if (e.kept && e.kept.length) lines.push(`保留名次: ${e.kept.join(", ")}`);
+    lines.push("");
+  });
+  if (finalRanks.length) {
+    lines.push("=== 最终名次 ===");
+    finalRanks.forEach((f, i) => {
+      lines.push(`  ${i + 1}. ${f.username} (第${f.round}局 第${f.pos}名)`);
+    });
+  }
+  const text = lines.join("\r\n");
+  const blob = new Blob(["\ufeff" + text], { type: "text/plain;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `晋级赛记录_${new Date().toISOString().slice(0, 10)}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+  a.remove();
+}
 
 let reconnecting = false;
 
