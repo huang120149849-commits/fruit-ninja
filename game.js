@@ -81,6 +81,9 @@ const el = {
   authMsg: document.getElementById("auth-msg"),
   authSubmit: document.getElementById("auth-submit"),
   authMusicBtn: document.getElementById("auth-music-btn"),
+  authTrackBtn: document.getElementById("auth-track-btn"),
+  musicTrackToggle: document.getElementById("music-track-toggle"),
+  gameMusicTrackToggle: document.getElementById("game-music-track-toggle"),
   lobbyUsername: document.getElementById("lobby-username"),
   lobbyBest: document.getElementById("lobby-best"),
   lobbyMsg: document.getElementById("lobby-msg"),
@@ -696,12 +699,25 @@ function renderResults(ranking) {
 function updateAudioButtons() {
   const musicLabel = "🎵 音乐: " + (AudioMan.musicOn ? "开" : "关");
   const sfxLabel = "🔊 音效: " + (AudioMan.sfxOn ? "开" : "关");
+  const trackLabel = "🎼 曲风: " + AudioMan.getTrackName();
   el.musicToggle.textContent = musicLabel;
   el.authMusicBtn.textContent = musicLabel;
   el.sfxToggle.textContent = sfxLabel;
+  if (el.authTrackBtn) el.authTrackBtn.textContent = trackLabel;
+  if (el.musicTrackToggle) el.musicTrackToggle.textContent = trackLabel;
   if (el.gameMusicToggle) el.gameMusicToggle.textContent = musicLabel;
+  if (el.gameMusicTrackToggle) el.gameMusicTrackToggle.textContent = trackLabel;
   if (el.gameSfxToggle) el.gameSfxToggle.textContent = sfxLabel;
 }
+
+function cycleTrack() {
+  AudioMan.setTrack(AudioMan.getTrackIndex() + 1);
+  updateAudioButtons();
+}
+
+if (el.authTrackBtn) el.authTrackBtn.addEventListener("click", cycleTrack);
+if (el.musicTrackToggle) el.musicTrackToggle.addEventListener("click", cycleTrack);
+if (el.gameMusicTrackToggle) el.gameMusicTrackToggle.addEventListener("click", cycleTrack);
 
 el.musicToggle.addEventListener("click", () => {
   AudioMan.setMusic(!AudioMan.musicOn);
