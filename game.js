@@ -1387,7 +1387,24 @@ const savedToken = localStorage.getItem("fn-token");
 if (savedToken) {
   socket.emit("loginWithToken", { token: savedToken }, (res) => {
     if (res.ok) completeAuth(res);
+    else autoLoginWithSavedCred();
   });
+} else {
+  autoLoginWithSavedCred();
+}
+
+function autoLoginWithSavedCred() {
+  let cred = null;
+  try {
+    cred = JSON.parse(localStorage.getItem("fn-cred") || "null");
+  } catch (e) {}
+  if (!cred || !cred.u) return;
+  el.authUsername.value = cred.u;
+  el.authPassword.value = cred.p || "";
+  el.rememberChk.checked = true;
+  setTimeout(() => {
+    el.authForm.dispatchEvent(new Event("submit", { cancelable: true }));
+  }, 300);
 }
 
 prefillCredentials();
