@@ -28,9 +28,10 @@
           <button id="tab-register" class="tab">注册</button>
         </div>
         <form id="auth-form" autocomplete="off">
-          <input id="auth-username" maxlength="16" placeholder="用户名 (2-16字符)" required>
-          <input id="auth-password" type="password" placeholder="密码 (至少4位)" required>
+          <input id="auth-username" maxlength="3" placeholder="用户名 (3位工号)" required>
+          <input id="auth-password" type="password" placeholder="密码 (3位数即可,如1234)" required>
           <input id="auth-password2" type="password" placeholder="确认密码" class="hidden">
+          <p class="hint">📌 使用工号注册:用户名需 3 位数字,密码 3 位数即可</p>
           <p id="auth-msg" class="msg"></p>
           <label class="remember"><input type="checkbox" id="remember-chk"> 记住账号密码</label>
           <button type="submit" id="auth-submit">登 录</button>

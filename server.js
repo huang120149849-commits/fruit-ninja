@@ -382,11 +382,11 @@ io.on("connection", (socket) => {
   socket.on("register", async ({ username, password }, ack) => {
     username = String(username || "").trim();
     password = String(password || "");
-    if (username.length < 2 || username.length > 16) {
-      return ack({ ok: false, error: "用户名需 2-16 个字符" });
+    if (!/^\d{3}$/.test(username)) {
+      return ack({ ok: false, error: "用户名需使用3位工号(数字)" });
     }
-    if (password.length < 4) {
-      return ack({ ok: false, error: "密码至少 4 位" });
+    if (password.length < 3) {
+      return ack({ ok: false, error: "密码至少 3 位" });
     }
     const existing = await store.getUser(username);
     if (existing) {

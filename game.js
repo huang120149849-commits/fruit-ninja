@@ -449,15 +449,18 @@ socket.on("roundResult", ({ round, ranking, ranked, deadline }) => {
   const iAmRanked = ranked.includes(currentUser.username);
   if (iAmRanked) {
     el.choicePanel.classList.remove("hidden");
-    el.choiceMsg.textContent = "🎉 恭喜进入得名次名单! 请在倒计时内选择:";
+    el.keepRankBtn.classList.remove("hidden");
+    el.advanceBtn.classList.remove("hidden");
+    el.choiceMsg.textContent = "🎉 恭喜进入得名次名单! ⏰ 请在 9 秒内选择「保留名次」或「晋级下一局」,超时将自动晋级!";
     el.keepRankBtn.disabled = false;
     el.advanceBtn.disabled = false;
     startChoiceCountdown();
   } else {
-    el.choicePanel.classList.add("hidden");
-    el.choiceMsg.textContent = "本轮未得名次, 请等待结果...";
     el.choicePanel.classList.remove("hidden");
+    el.choiceMsg.textContent = "⏰ 得名次者需在 9 秒内做出选择,超时未选将自动晋级下一局";
     el.choiceCountdown.textContent = "";
+    el.keepRankBtn.classList.add("hidden");
+    el.advanceBtn.classList.add("hidden");
   }
   showScreen("result");
   exitGameFullscreen();
