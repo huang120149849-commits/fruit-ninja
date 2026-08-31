@@ -15,6 +15,8 @@ jobs:
       GITEE_REPO: https://gitee.com/nicolas-shine/fruit-ninja01.git
       GITEE_BRANCH: master
       TARGET_BRANCH: master
+      GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+      GIT_TERMINAL_PROMPT: '0'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,10 +28,9 @@ jobs:
         run: |
           git config user.name "gitee-sync-bot"
           git config user.email "gitee-sync-bot@users.noreply.github.com"
-          git remote add gitee "$GITEE_REPO"
 
       - name: Fetch from Gitee
-        run: git fetch gitee "$GITEE_BRANCH"
+        run: git fetch "https://oauth2:${GITEE_TOKEN}@gitee.com/nicolas-shine/fruit-ninja01.git" "$GITEE_BRANCH"
 
       - name: Merge and push
         run: |
@@ -38,6 +39,6 @@ jobs:
             git push origin "HEAD:${TARGET_BRANCH}"
           else
             git merge --abort
-            echo "::error::Gitee 同步合并冲突，请在本仓库手动解决。"
+            echo "::error::Gitee 同步合并冲突，请手动解决。"
             exit 1
           fi
