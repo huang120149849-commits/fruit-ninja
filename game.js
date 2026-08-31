@@ -131,6 +131,14 @@ const el = {
   resultBackBtn: document.getElementById("result-back-btn"),
   beatOverlay: document.getElementById("beat-overlay"),
   rememberChk: document.getElementById("remember-chk"),
+  authScreen: document.getElementById("auth-screen"),
+  bgAdmin: document.getElementById("bg-admin"),
+  bgFile: document.getElementById("bg-file"),
+  bgUploadBtn: document.getElementById("bg-upload-btn"),
+  bgResetBtn: document.getElementById("bg-reset-btn"),
+  bgPreview: document.getElementById("bg-preview"),
+  bgPreviewRow: document.getElementById("bg-preview-row"),
+  bgMsg: document.getElementById("bg-msg"),
 };
 
 function escapeHtml(s) {
@@ -219,8 +227,39 @@ function renderRoleUI() {
   el.roleBadge.textContent = roleText;
   el.roleBadge.classList.toggle("hidden", !roleText);
   el.adminPanel.classList.toggle("hidden", currentUser.role !== "superadmin");
+  el.bgAdmin.classList.toggle("hidden", !isAdmin());
   if (currentUser.role === "superadmin") refreshAdminList();
+  if (isAdmin()) refreshBgPreview();
   renderArena();
+}
+
+async function loadLoginBg() {
+  try {
+    const res = await fetch("/api/login-bg", { cache: "no-store" });
+    const data = await res.json();
+    if (el.authScreen) {
+      if (data.hasBg) {
+        el.authScreen.style.backgroundImage = `url("${data.url}")`;
+      } else {
+        el.authScreen.style.backgroundImage = "";
+      }
+    }
+    return data;
+  } catch (e) {
+    return { hasBg: false };
+  }
+}
+
+async function refreshBgPreview() {
+  const data = await loadLoginBg();
+  if (!el.bgPreview || !el.bgPreviewRow) return;
+  if (data.hasBg) {
+    el.bgPreview.src = data.url;
+    el.bgPreviewRow.classList.remove("hidden");
+  } else {
+    el.bgPreview.removeAttribute("src");
+    el.bgPreviewRow.classList.add("hidden");
+  }
 }
 
 function renderArena() {
@@ -290,6 +329,53 @@ el.adminRemoveBtn.addEventListener("click", () => {
     el.adminMsg.textContent = res.ok ? `已取消 ${username} 的管理员权限` : res.error || "操作失败";
     if (res.ok) { el.adminUsername.value = ""; refreshAdminList(); }
   });
+});
+
+el.bgUploadBtn.addEventListener("click", () => {
+  const file = el.bgFile.files && el.bgFile.files[0];
+  if (!file) {
+    el.bgMsg.textContent = "请先选择一张图片";
+    return;
+  }
+  el.bgUploadBtn.disabled = true;
+  el.bgMsg.textContent = "上传中...";
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const res = await fetch("/api/login-bg", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-auth-token": currentUser.token },
+        body: JSON.stringify({ image: reader.result, name: file.name }),
+      });
+      const data = await res.json();
+      el.bgMsg.textContent = data.ok ? "✅ 背景已更新" : data.error || "上传失败";
+      if (data.ok) {
+        el.bgFile.value = "";
+        refreshBgPreview();
+      }
+    } catch (e) {
+      el.bgMsg.textContent = "上传失败: " + (e.message || e);
+    } finally {
+      el.bgUploadBtn.disabled = false;
+    }
+  };
+  reader.onerror = () => { el.bgMsg.textContent = "读取文件失败"; el.bgUploadBtn.disabled = false; };
+  reader.readAsDataURL(file);
+});
+
+el.bgResetBtn.addEventListener("click", async () => {
+  el.bgResetBtn.disabled = true;
+  el.bgMsg.textContent = "恢复中...";
+  try {
+    const res = await fetch("/api/login-bg/clear", { method: "POST", headers: { "x-auth-token": currentUser.token } });
+    const data = await res.json();
+    el.bgMsg.textContent = data.ok ? "✅ 已恢复默认背景" : data.error || "操作失败";
+    if (data.ok) refreshBgPreview();
+  } catch (e) {
+    el.bgMsg.textContent = "操作失败: " + (e.message || e);
+  } finally {
+    el.bgResetBtn.disabled = false;
+  }
 });
 
 function refreshLeaderboard() {
@@ -1457,6 +1543,7 @@ function autoLoginWithSavedCred() {
 }
 
 prefillCredentials();
+loadLoginBg();
 
 AudioMan.onBeat(() => {
   if (!el.beatOverlay) return;

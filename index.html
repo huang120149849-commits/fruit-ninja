@@ -65,6 +65,19 @@
             <ul id="admin-list"></ul>
             <p id="admin-msg" class="msg"></p>
           </div>
+          <div id="bg-admin" class="hidden">
+            <h3>🖼️ 登录页背景</h3>
+            <p class="hint">上传一张图片作为登录页背景(支持 PNG/JPG/GIF/WebP, 最大5MB)</p>
+            <input type="file" id="bg-file" accept="image/png,image/jpeg,image/webp,image/gif" class="file-input">
+            <div class="bg-actions">
+              <button id="bg-upload-btn" class="big-btn ghost">上传为背景</button>
+              <button id="bg-reset-btn" class="big-btn danger">恢复默认</button>
+            </div>
+            <div id="bg-preview-row" class="hidden">
+              <img id="bg-preview" alt="当前登录背景预览">
+            </div>
+            <p id="bg-msg" class="msg"></p>
+          </div>
           <p id="lobby-msg" class="msg"></p>
         </div>
         <div class="panel lobby-right">

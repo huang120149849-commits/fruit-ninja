@@ -19,10 +19,101 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
 app.use(express.static(path.join(__dirname)));
+app.use(express.json({ limit: "10mb" }));
 
 const DATA_DIR = path.join(__dirname, "data");
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 const USERS_FILE = path.join(DATA_DIR, "users.json");
+
+// ---------- 登录页背景图 (admin can upload/replace) ----------
+const BG_EXT_TO_MIME = { png: "image/png", jpg: "image/jpeg", gif: "image/gif", webp: "image/webp" };
+const BG_META_FILE = path.join(DATA_DIR, "login-bg-meta.json");
+
+function bgFiles() {
+  try {
+    return fs.readdirSync(DATA_DIR).filter((f) => /^login-bg\.(png|jpg|gif|webp)$/i.test(f));
+  } catch {
+    return [];
+  }
+}
+function findBgFile() {
+  const files = bgFiles();
+  return files.length ? path.join(DATA_DIR, files[0]) : null;
+}
+function removeBgFiles() {
+  for (const f of bgFiles()) {
+    try { fs.unlinkSync(path.join(DATA_DIR, f)); } catch {}
+  }
+}
+function writeBgMeta(name) {
+  try {
+    fs.writeFileSync(BG_META_FILE, JSON.stringify({ name: String(name || "").slice(0, 120), updatedAt: new Date().toISOString() }));
+  } catch {}
+}
+function readBgMeta() {
+  try { return JSON.parse(fs.readFileSync(BG_META_FILE, "utf8")); } catch { return null; }
+}
+function removeBgMeta() {
+  try { fs.unlinkSync(BG_META_FILE); } catch {}
+}
+function detectImageExt(buf) {
+  if (buf.length < 12) return null;
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return "png";
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "jpg";
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38) return "gif";
+  if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 && buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return "webp";
+  return null;
+}
+async function isAdminHttp(req) {
+  const token = req.get("x-auth-token");
+  if (!token) return false;
+  const username = tokens.get(token);
+  if (!username) return false;
+  return isAdminRole(await getRole(username));
+}
+
+app.get("/api/login-bg", (req, res) => {
+  const f = findBgFile();
+  if (!f) return res.json({ hasBg: false });
+  let stat;
+  try { stat = fs.statSync(f); } catch { return res.json({ hasBg: false }); }
+  const meta = readBgMeta();
+  res.json({ hasBg: true, url: `/login-bg?v=${Math.round(stat.mtimeMs)}`, ext: path.extname(f).slice(1).toLowerCase(), name: meta && meta.name ? meta.name : "" });
+});
+
+app.get("/login-bg", (req, res) => {
+  const f = findBgFile();
+  if (!f) return res.status(404).end();
+  const ext = path.extname(f).slice(1).toLowerCase();
+  res.set("Content-Type", BG_EXT_TO_MIME[ext] || "application/octet-stream");
+  res.set("Cache-Control", "no-cache, no-store, must-revalidate");
+  fs.createReadStream(f).pipe(res);
+});
+
+app.post("/api/login-bg", async (req, res) => {
+  if (!(await isAdminHttp(req))) return res.status(403).json({ ok: false, error: "仅管理员可修改登录背景" });
+  const dataUrl = req.body && req.body.image;
+  if (!dataUrl || typeof dataUrl !== "string") return res.status(400).json({ ok: false, error: "缺少图片数据" });
+  const m = /^data:image\/(png|jpe?g|gif|webp);base64,(.+)$/i.exec(dataUrl);
+  if (!m) return res.status(400).json({ ok: false, error: "图片格式需为 data:image/...;base64" });
+  const buf = Buffer.from(m[2], "base64");
+  if (buf.length < 16 || buf.length > 5 * 1024 * 1024) return res.status(400).json({ ok: false, error: "图片大小无效(需在 16B-5MB 之间)" });
+  const det = detectImageExt(buf);
+  if (!det) return res.status(400).json({ ok: false, error: "仅支持 PNG/JPEG/GIF/WebP 图片" });
+  removeBgFiles();
+  const dest = path.join(DATA_DIR, "login-bg." + det);
+  fs.writeFileSync(dest, buf);
+  writeBgMeta(req.body.name || req.body.imageName);
+  const stat = fs.statSync(dest);
+  res.json({ ok: true, url: `/login-bg?v=${Math.round(stat.mtimeMs)}`, ext: det });
+});
+
+app.post("/api/login-bg/clear", async (req, res) => {
+  if (!(await isAdminHttp(req))) return res.status(403).json({ ok: false, error: "仅管理员可修改登录背景" });
+  removeBgFiles();
+  removeBgMeta();
+  res.json({ ok: true });
+});
 
 function loadUsers() {
   try {
