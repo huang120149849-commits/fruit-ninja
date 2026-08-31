@@ -631,8 +631,8 @@ th {
   margin-bottom: 8px;
 }
 
-/* 登录页背景图 */
-#auth-screen {
+/* 背景图(应用到整个 #app 容器, 登录页/大厅/游戏/结果页均显示) */
+#app {
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;

@@ -132,6 +132,7 @@ const el = {
   beatOverlay: document.getElementById("beat-overlay"),
   rememberChk: document.getElementById("remember-chk"),
   authScreen: document.getElementById("auth-screen"),
+  app: document.getElementById("app"),
   bgAdmin: document.getElementById("bg-admin"),
   bgFile: document.getElementById("bg-file"),
   bgUploadBtn: document.getElementById("bg-upload-btn"),
@@ -237,11 +238,12 @@ async function loadLoginBg() {
   try {
     const res = await fetch("/api/login-bg", { cache: "no-store" });
     const data = await res.json();
-    if (el.authScreen) {
+    const target = el.app || document.getElementById("app");
+    if (target) {
       if (data.hasBg) {
-        el.authScreen.style.backgroundImage = `url("${data.url}")`;
+        target.style.backgroundImage = `url("${data.url}")`;
       } else {
-        el.authScreen.style.backgroundImage = "";
+        target.style.backgroundImage = "";
       }
     }
     return data;
