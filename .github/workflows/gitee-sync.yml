@@ -1,0 +1,43 @@
+name: Sync from Gitee (fruit-ninja)
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      GITEE_REPO: https://gitee.com/nicolas-shine/fruit-ninja01.git
+      GITEE_BRANCH: master
+      TARGET_BRANCH: master
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "gitee-sync-bot"
+          git config user.email "gitee-sync-bot@users.noreply.github.com"
+          git remote add gitee "$GITEE_REPO"
+
+      - name: Fetch from Gitee
+        run: git fetch gitee "$GITEE_BRANCH"
+
+      - name: Merge and push
+        run: |
+          git checkout "$TARGET_BRANCH"
+          if git merge --no-edit FETCH_HEAD; then
+            git push origin "HEAD:${TARGET_BRANCH}"
+          else
+            git merge --abort
+            echo "::error::Gitee 同步合并冲突，请在本仓库手动解决。"
+            exit 1
+          fi
