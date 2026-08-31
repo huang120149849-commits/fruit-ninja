@@ -18,7 +18,14 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
-app.use(express.static(path.join(__dirname)));
+app.use(
+  express.static(path.join(__dirname), {
+    setHeaders: (res) => {
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    },
+    etag: false,
+  })
+);
 app.use(express.json({ limit: "10mb" }));
 
 const DATA_DIR = path.join(__dirname, "data");
