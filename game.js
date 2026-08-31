@@ -227,7 +227,7 @@ function renderRoleUI() {
   el.roleBadge.textContent = roleText;
   el.roleBadge.classList.toggle("hidden", !roleText);
   el.adminPanel.classList.toggle("hidden", currentUser.role !== "superadmin");
-  el.bgAdmin.classList.toggle("hidden", !isAdmin());
+  if (el.bgAdmin) el.bgAdmin.classList.toggle("hidden", !isAdmin());
   if (currentUser.role === "superadmin") refreshAdminList();
   if (isAdmin()) refreshBgPreview();
   renderArena();
@@ -438,6 +438,7 @@ el.setRankCountBtn.addEventListener("click", () => {
 el.leaderboardBtn.addEventListener("click", () => {
   refreshLeaderboard();
   exitGameFullscreen();
+  renderRoleUI();
   showScreen("lobby");
 });
 
