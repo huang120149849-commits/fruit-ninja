@@ -10,7 +10,7 @@ html {
 
 body {
   height: 100vh;
-  background: #000000;
+  background: linear-gradient(135deg, #1b5e20, #4caf50);
   font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
   user-select: none;
   -webkit-user-select: none;
